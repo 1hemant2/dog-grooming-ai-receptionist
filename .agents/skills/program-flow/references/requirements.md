@@ -19,6 +19,9 @@ Build a text-based AI receptionist for Maple Street Dog Grooming. It should hand
 
 ## Business defaults
 
+- Business settings are stored as a collection keyed by a stable business ID. Maple Street Dog Grooming is the initial configured business.
+- Resolve the business at the start of each customer conversation using trusted transport metadata, such as the number called or authenticated request context. Do not accept a business identity from customer-written text.
+- If the business cannot be resolved, do not answer from another business's configuration or access its Calendar or Sheets data.
 - The shop has one groomer and handles one appointment at a time.
 - Every service has a configured duration. Calendar availability must cover the complete service duration.
 - Shop hours, timezone, services, durations, and starting prices come from configured shop information.
@@ -29,18 +32,28 @@ Build a text-based AI receptionist for Maple Street Dog Grooming. It should hand
 - Delays shorter than 15 minutes are recorded and sent to the business owner. Delays of 15 minutes or more go to a human.
 - Current rabies vaccination proof is required before grooming. Unclear vaccination cases go to a human.
 - Do not reject a dog based only on breed. Safety-sensitive cases involving size, health, aggression, or severe anxiety go to a human.
+- The shop is open Monday through Saturday from 9:00 AM to 5:00 PM and closed on Sunday.
+- The shop timezone is `America/Los_Angeles`. No special holiday hours are defined for Phase 1.
+- Bath starts at $45 and takes 60 minutes.
+- Bath and Trim starts at $70 and takes 90 minutes.
+- Full Groom starts at $95 and takes 120 minutes.
+- Dogs from 71 to 100 lb add 30 minutes to the service duration. Dogs over 100 lb require human review.
+- Aggression, severe anxiety, active illness, or injury requires human review.
+- Phase 1 handoff records `needs_human` in the Call Log and tells the customer that the owner will call back.
+- Availability searches cover the next seven days. If no suitable slot exists, ask for another date range or create a callback request.
 
 ## Shared conversation lifecycle
 
-1. Identify what the customer wants.
-2. Collect only the information needed for that request.
-3. Check the relevant source of truth: shop information, policy, or Calendar.
-4. Answer the question, propose an available option, or hand the request to a human.
-5. Before changing Calendar, confirm the customer, pet, service, date, and time.
-6. Check Calendar again immediately before writing to avoid a stale availability result.
-7. Perform the approved Calendar action once and verify that it succeeded.
-8. Update the contact and add a call-log entry in Sheets.
-9. Tell the customer what happened and ask whether they need anything else.
+1. Resolve the business from trusted request metadata and load its configuration.
+2. Identify what the customer wants.
+3. Collect only the information needed for that request.
+4. Check the relevant source of truth for that business: shop information, policy, or Calendar.
+5. Answer the question, propose an available option, or hand the request to a human.
+6. Before changing Calendar, confirm the customer, pet, service, date, and time.
+7. Check Calendar again immediately before writing to avoid a stale availability result.
+8. Perform the approved Calendar action once and verify that it succeeded.
+9. Update the contact and add a call-log entry in the business's Sheets records.
+10. Tell the customer what happened and ask whether they need anything else.
 
 If a required lookup fails, the receptionist must not guess. It should explain that it cannot complete the request and preserve enough context for a human to continue.
 
@@ -132,11 +145,3 @@ Keep one row per phone number with the customer name, pet name, breed or mix, si
 ### Call Log
 
 Keep one row per conversation with the timestamp, phone number, intent, outcome, appointment identifier, and human-handoff summary when applicable.
-
-## Open decisions
-
-- Exact shop hours, timezone, holiday closures, services, durations, and starting prices
-- Additional vaccination requirements and acceptable forms of proof
-- The size or safety conditions that always require human review
-- How the business owner receives notifications and human handoffs
-- How far to search when no suitable appointment exists today or the next day

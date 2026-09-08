@@ -9,6 +9,7 @@ Write code for a human reviewer. Optimize for clarity, correctness, maintainabil
 - Keep domain logic independent from frameworks, transport layers, databases, and third-party SDKs.
 - Place side effects behind small interfaces so core behavior can be tested without external systems.
 - Make dependencies explicit through constructors or function parameters. Avoid hidden dependencies and global mutable state.
+- Read environment variables in one application configuration module. Other modules should use the parsed configuration instead of accessing `process.env` directly.
 - Model important domain concepts with meaningful types instead of passing unrelated primitive values everywhere.
 - Keep public APIs small. Expose only the operations a caller needs.
 - Represent expected failures explicitly and handle errors at the correct boundary.
@@ -33,6 +34,9 @@ Write code for a human reviewer. Optimize for clarity, correctness, maintainabil
 - Keep one level of abstraction within a function.
 - Replace magic values with named constants or domain types.
 - Prefer explicit code over clever expressions and premature generalization.
+- Prefer common, widely recognized language syntax when a straightforward option exists.
+- Avoid advanced or uncommon syntax that makes code harder to review, explain, or maintain. Use it only when it provides a clear benefit that simpler syntax cannot provide.
+- Prefer direct calls and named functions for normal control flow. Use callbacks when an API or event requires them, and keep non-trivial callback behavior in a clearly named function.
 - Write comments to explain why a decision exists, not to repeat what the code says.
 - Follow the language's standard formatting and naming conventions consistently.
 
