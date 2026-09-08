@@ -1,18 +1,11 @@
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { createServer, type Server } from "node:http";
 
-export function createHttpServer(): Server {
-	return createServer(handleRequest);
-}
+import type { InMemoryConversationStore } from "../models/conversation.js";
+import { createHttpApp } from "./app.js";
 
-function handleRequest(request: IncomingMessage, response: ServerResponse): void {
-	if (request.method === "GET" && request.url === "/health") {
-		response.writeHead(200, { "content-type": "application/json" });
-		response.end(JSON.stringify({ status: "ok", service: "receptionist" }));
-		return;
-	}
-
-	response.writeHead(404, { "content-type": "application/json" });
-	response.end(JSON.stringify({ error: "Not found" }));
+export function createHttpServer(conversationStore: InMemoryConversationStore): Server {
+	const app = createHttpApp(conversationStore);
+	return createServer(app);
 }
 
 export async function closeServerGracefully(server: Server): Promise<void> {

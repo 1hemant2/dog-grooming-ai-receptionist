@@ -1,7 +1,9 @@
 import { APPLICATION_CONFIG } from "./config/constants.js";
 import { createHttpServer, registerShutdownSignals } from "./http/server.js";
+import { InMemoryConversationStore } from "./models/conversation.js";
 
-const server = createHttpServer();
+const conversationStore = new InMemoryConversationStore();
+const server = createHttpServer(conversationStore);
 
 registerShutdownSignals(server);
 

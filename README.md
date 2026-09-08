@@ -21,6 +21,19 @@ The server listens on `http://localhost:3000`. Check it with:
 curl http://localhost:3000/health
 ```
 
+Start or continue a conversation with:
+
+```bash
+curl --request POST http://localhost:3000/conversations/messages \
+  --header 'Content-Type: application/json' \
+  --header 'X-Business-Id: maple-street-dog-grooming' \
+  --data '{"callerPhone":"+14155550100","message":"What time do you open?"}'
+```
+
+The response includes a `conversationId`. Include it in the JSON body of later messages. A UI or
+voice adapter may provide its own conversation ID with the first message. Phase 1 keeps conversation
+state in memory, so IDs stop working when the server restarts.
+
 ## Commands
 
 - `npm run dev` starts the development server with reloads.
@@ -31,8 +44,11 @@ curl http://localhost:3000/health
 
 ## Current structure
 
-- `src/config/` contains explicit shop rules and values.
-- `src/http/` contains the HTTP boundary.
+- `src/models/` contains business and conversation state.
+- `src/controllers/` validates requests and coordinates model operations.
+- `src/routes/` maps Express routes to controllers.
+- `src/config/` contains application and business configuration values.
+- `src/http/` contains Express setup and HTTP server lifecycle behavior.
 - `.agents/skills/program-flow/references/requirements.md` contains the agreed behavior.
 
 Domain objects, use cases, and external adapters will be added only when their behavior is implemented.

@@ -1,13 +1,16 @@
-import type { BusinessConfig } from "./business.js";
+import type { BusinessConfig } from "../models/business.js";
 
 const DEFAULT_PORT = 3000;
 const DEFAULT_BUSINESS_ID = "maple-street-dog-grooming";
 
 export const APPLICATION_CONFIG = {
 	port: getPort(),
+	maxRequestBytes: 16_384,
+	maxMessageCharacters: 4_000,
+	maxConversationIdCharacters: 128,
 };
 
-// Stored the default config in array of object, so that code would scale as number of vender will grow.
+// Store business configurations in an array so new vendors can be added without changing request handling.
 export const BUSINESS_CONFIGS: BusinessConfig[] = [
 	{
 		id: DEFAULT_BUSINESS_ID,
@@ -41,14 +44,15 @@ export const BUSINESS_CONFIGS: BusinessConfig[] = [
 	},
 ];
 
-export function getBusinessConfig(businessId: string): BusinessConfig {
+// Find the configuration for the requested business.
+export function findBusinessConfig(businessId: string): BusinessConfig | undefined {
 	for (const businessConfig of BUSINESS_CONFIGS) {
 		if (businessConfig.id === businessId) {
 			return businessConfig;
 		}
 	}
 
-	throw new Error(`Unknown business: ${businessId}`);
+	return undefined;
 }
 
 function getPort(): number {

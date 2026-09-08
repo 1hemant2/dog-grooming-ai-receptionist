@@ -17,6 +17,18 @@ Build a text-based AI receptionist for Maple Street Dog Grooming. It should hand
 - Create a Google Sheet with `Contacts` and `Call Log` tabs.
 - Use TypeScript with Node.js and any LLM provider.
 
+## Phase 1 conversation interface
+
+- Customer messages enter through `POST /conversations/messages` with JSON content.
+- `X-Business-Id` carries the business identity as trusted transport metadata for the Phase 1 demo. It is never extracted from customer-written text. A production phone adapter would derive the same context from the number called or authenticated integration.
+- The body contains `callerPhone`, `message`, and an optional `conversationId`.
+- Caller phone numbers use E.164 format.
+- A trusted client may provide a conversation ID with the first message, which supports IDs created by a voice provider or UI. If no ID is provided, the server creates a UUID. The same ID is returned and used for later messages.
+- Conversation state is kept in memory for Phase 1 and is lost when the process restarts.
+- A conversation cannot be resumed under another business or caller phone number.
+- After a call ends and its required Call Log data is saved, remove its in-memory conversation state. Do not remove the state if it must be preserved for a failed write or human handoff.
+- Successful responses contain `conversationId`, `status`, and `reply`.
+
 ## Business defaults
 
 - Business settings are stored as a collection keyed by a stable business ID. Maple Street Dog Grooming is the initial configured business.

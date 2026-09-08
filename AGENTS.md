@@ -6,6 +6,7 @@ Write code for a human reviewer. Optimize for clarity, correctness, maintainabil
 
 - Identify responsibilities, domain objects, boundaries, and data flow before implementing a non-trivial feature.
 - Keep each class or module focused on one cohesive responsibility.
+- Follow the project's lightweight MVC structure: models own domain state, controllers handle HTTP input and responses, and routes only map URLs to controllers.
 - Keep domain logic independent from frameworks, transport layers, databases, and third-party SDKs.
 - Place side effects behind small interfaces so core behavior can be tested without external systems.
 - Make dependencies explicit through constructors or function parameters. Avoid hidden dependencies and global mutable state.
