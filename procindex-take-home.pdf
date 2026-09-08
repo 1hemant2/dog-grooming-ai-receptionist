@@ -1,0 +1,233 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<<
+/Producer (pypdf)
+/Title (Take\055Home \055 ProcIndex)
+/Author (ProcIndex)
+>>
+endobj
+2 0 obj
+<<
+/Type /Pages
+/Count 2
+/Kids [ 4 0 R 8 0 R ]
+>>
+endobj
+3 0 obj
+<<
+/Type /Catalog
+/Pages 2 0 R
+>>
+endobj
+4 0 obj
+<<
+/Contents 5 0 R
+/MediaBox [ 0 0 612 792 ]
+/Resources <<
+/Font 6 0 R
+/ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
+>>
+/Rotate 0
+/Trans <<
+>>
+/Type /Page
+/Parent 2 0 R
+>>
+endobj
+5 0 obj
+<<
+/Length 3302
+>>
+stream
+1 0 0 1 0 0 cm  BT /F1 12 Tf 14.4 TL ET
+q
+1 0 0 1 57.84 710.16 cm
+q
+0 0 0 rg
+BT 1 0 0 1 0 4 Tm /F1 20 Tf 24 TL (Take-Home - ProcIndex) Tj T* ET
+Q
+Q
+q
+1 0 0 1 57.84 670.16 cm
+q
+0 0 0 rg
+BT 1 0 0 1 0 4 Tm /F1 16 Tf 20 TL (What you're building) Tj T* ET
+Q
+Q
+q
+1 0 0 1 57.84 587.16 cm
+q
+0 0 0 rg
+BT 1 0 0 1 0 64.5 Tm /F1 10.5 Tf 15 TL -0.121941 Tw (An AI receptionist for a small dog grooming shop called Maple Street Dog Grooming. The shop gets around) Tj T* 0 Tw (30 calls a day. People want to book a grooming appointment, change an appointment, ask about pricing or) Tj T* (hours, complain about a charge, ask about vaccination requirements, ask if you groom a certain breed, or) Tj T* -0.031725 Tw (call to say they're running late. The agent picks up. You decide what it handles and what gets handed off to) Tj T* 0 Tw (a human.) Tj T* ET
+Q
+Q
+q
+1 0 0 1 57.84 558.16 cm
+q
+0 0 0 rg
+BT 1 0 0 1 0 4.5 Tm /F1 10.5 Tf 15 TL (It talks to two things:) Tj T* ET
+Q
+Q
+q
+1 0 0 1 57.84 529.16 cm
+q
+BT 1 0 0 1 36 4.5 Tm -18 0 Td 15 TL /F1 10.5 Tf 0 0 0 rg (-  ) Tj ( ) Tj (Google Calendar, where it checks availability and creates or changes events.) Tj T* 18 0 Td ET
+Q
+Q
+q
+1 0 0 1 57.84 508.16 cm
+q
+BT 1 0 0 1 36 4.5 Tm -18 0 Td 15 TL /F1 10.5 Tf 0 0 0 rg (-  ) Tj ( ) Tj (Google Sheets, where it keeps a row per caller and logs what came up on each call.) Tj T* 18 0 Td ET
+Q
+Q
+q
+1 0 0 1 57.84 495.16 cm
+Q
+q
+1 0 0 1 57.84 474.16 cm
+q
+0 0 0 rg
+BT 1 0 0 1 0 4.5 Tm /F1 10.5 Tf 15 TL (Phase 1 is a text chat. Phase 2 makes it a voice agent on Vapi.) Tj T* ET
+Q
+Q
+q
+1 0 0 1 57.84 440.16 cm
+q
+0 0 0 rg
+BT 1 0 0 1 0 4 Tm /F1 16 Tf 20 TL (Stack) Tj T* ET
+Q
+Q
+q
+1 0 0 1 57.84 417.16 cm
+q
+0 0 0 rg
+BT 1 0 0 1 0 4.5 Tm /F1 10.5 Tf 15 TL (TypeScript or Python. Any LLM provider.) Tj T* ET
+Q
+Q
+q
+1 0 0 1 57.84 397.16 cm
+Q
+q
+1 0 0 1 75.6 396.16 cm
+q
+0 0 0 rg
+BT /F1 10 Tf 12 TL ET
+BT 1 0 0 1 6 5 Tm  T* ET
+q
+1 J
+1 j
+.466667 .466667 .466667 RG
+.65 w
+n 0 0 m 460.8 0 l S
+Q
+Q
+Q
+q
+1 0 0 1 57.84 384.16 cm
+Q
+q
+1 0 0 1 57.84 356.16 cm
+q
+0 0 0 rg
+BT 1 0 0 1 0 4 Tm /F1 16 Tf 20 TL (Phase 1: build the agent) Tj T* ET
+Q
+Q
+q
+1 0 0 1 57.84 333.16 cm
+q
+0 0 0 rg
+BT 1 0 0 1 0 4.5 Tm /F1 10.5 Tf 15 TL (We only care about correctness here. Speed, token cost, and UI polish don't matter.) Tj T* ET
+Q
+Q
+q
+1 0 0 1 57.84 304.16 cm
+q
+0 0 0 rg
+BT 1 0 0 1 0 4.5 Tm /F1 10.5 Tf 15 TL (Build the agent and put a basic chat UI on top so we can talk to it. UI gets no points. Don't waste time on it.) Tj T* ET
+Q
+Q
+q
+1 0 0 1 57.84 260.16 cm
+q
+0 0 0 rg
+BT 1 0 0 1 0 19.5 Tm /F1 10.5 Tf 15 TL (For setup, put a few events on the Calendar in advance so you can test conflicts and reschedules. Make a) Tj T* (Google Sheet with a Contacts tab. Columns are up to you.) Tj T* ET
+Q
+Q
+q
+1 0 0 1 57.84 231.16 cm
+q
+0 0 0 rg
+BT 1 0 0 1 0 4.5 Tm /F1 10.5 Tf 15 TL (A conversation might go something like:) Tj T* ET
+Q
+Q
+q
+1 0 0 1 57.84 157.16 cm
+q
+0 0 0 rg
+BT 1 0 0 1 36 49.5 Tm /F1 10.5 Tf 15 TL (Caller: Is the 3:30 bath and trim appointment on Thursday open? Agent: That one's full. The) Tj T* -0.015562 Tw (4:30 appointment is open, want that instead? Caller: Sure, 4:30 works. Agent: Got it. Can I get) Tj T* 0 Tw -0.0166 Tw (your name and a number to reach you on? Caller: Sara, 415-555-0190. Agent: Booked you in.) Tj T* 0 Tw (Anything else?) Tj T* ET
+Q
+Q
+ 
+
+endstream
+endobj
+6 0 obj
+<<
+/F1 7 0 R
+>>
+endobj
+7 0 obj
+<<
+/BaseFont /Helvetica
+/Encoding /WinAnsiEncoding
+/Name /F1
+/Subtype /Type1
+/Type /Font
+>>
+endobj
+8 0 obj
+<<
+/Contents 9 0 R
+/MediaBox [ 0 0 612 792 ]
+/Resources <<
+/Font 6 0 R
+/ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
+>>
+/Rotate 0
+/Trans <<
+>>
+/Type /Page
+/Parent 2 0 R
+>>
+endobj
+9 0 obj
+<<
+/Filter [ /ASCII85Decode /FlateDecode ]
+/Length 951
+>>
+stream
+Gb!#YgQ(#H&:O:SS@:J3Q^+Y1]ma+#K6EG&.,%iq;'7O!1gVo&86;U'q!U#7/N]<T\1#^u(9AIs3G6VGO((M)`8Ot0^^gU_s!^E"7Bo=PMA4$6r)epW)TAVBZV9GI-&IG!?GQ_@)!E#2_qHN?SXrmQgL4fV$jD7th[L`Yk5U4!89=dTnE'?;LQTY6lpj)>BT_G>R.FU9jlj0m>^0g90i'N^ZP0UIa7B&m8^d-3K@J?X3TNAZC#j=Ps&r&gQnGU!W[-qrX78r&eOpSu::WJU,u;r>E',:*,=_[(Fiuo09dHJ/D*$^44iVuMNo4ZhO\#uW8D6@DB*&Zr2\*8SI8dtN?<:giL*4m+Cp9b])U3?S5"8$q/6W\g8e&<d]gF?JYZ)NHfcd=C+KrlRM)7_>a_6:^P2%Ja#g"3\d?.!jgZH;T-W'6P^^_&Z`ecqnbak@Fj'^HjBX=uG7B^Dj*-8bn>SB!;Y1<#%9ufo[&iduR$R2,sH31tkTTi0W\:U1rnMbHO*9liLWYm25+Qt>qU2GP6FI4bd`Z%t"Ck@tp,)NOegg*5%::2M8^9a(egu7)t]tdimn6+7?DM/S8LodNJ7:#X^,<dbfl6CW2m8fN0_-V/er/s,M7/eH7_eeC"$kTV$B`rnT@X0$+DcbFo(+a#E-g-r#:#C5DXOZa>PGuH]<gqeirW@?E[n2C.KBZ`^0.Mshkn*V"3M1@1hs5oqIFh>+l0_`OiqNfb#d0G4=oObjQ/:ZL\lP9Gs,h(Kqc0\ujYjjt=INR)e/'-RD!7A@ZS/=W2h0Q="!NVAJ:KF>>oo5Wh64II(q^s6WoDd(U-7s.W&;#Sg.=g'?_4;\J3:kmRf3[Gn%ER]%Qd[Qn\4XpbEfe<K^X99Q0cA"=OolQX)4[`C[?<^mlkn->B]@uIlj>Pq(E@AI0@4'*PYjG%&ZU&QJ<b:YqnM_*2AR[NY)*~>
+endstream
+endobj
+xref
+0 10
+0000000000 65535 f 
+0000000015 00000 n 
+0000000111 00000 n 
+0000000176 00000 n 
+0000000225 00000 n 
+0000000414 00000 n 
+0000003768 00000 n 
+0000003799 00000 n 
+0000003906 00000 n 
+0000004095 00000 n 
+trailer
+<<
+/Size 10
+/Root 3 0 R
+/Info 1 0 R
+>>
+startxref
+5137
+%%EOF
