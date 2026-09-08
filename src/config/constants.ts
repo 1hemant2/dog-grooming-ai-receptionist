@@ -7,6 +7,7 @@ export const APPLICATION_CONFIG = {
 	port: getPort(),
 };
 
+// Stored the default config in array of object, so that code would scale as number of vender will grow.
 export const BUSINESS_CONFIGS: BusinessConfig[] = [
 	{
 		id: DEFAULT_BUSINESS_ID,
@@ -15,13 +16,13 @@ export const BUSINESS_CONFIGS: BusinessConfig[] = [
 		openingTime: "09:00",
 		closingTime: "17:00",
 		closedDays: ["Sunday"],
-		groomerCapacity: 1,
-		rescheduleNoticeHours: 24,
-		lateHandoffMinutes: 15,
-		largeDogMinimumWeightLb: 71,
-		humanReviewWeightLb: 100,
-		largeDogExtraMinutes: 30,
-		availabilitySearchDays: 7,
+		groomerCapacity: 1, // Maximum number of appointments that can run at the same time.
+		rescheduleNoticeHours: 24, // Minimum notice required for automatic cancellation or rescheduling.
+		lateHandoffMinutes: 15, // Delays at or above this threshold require human review.
+		largeDogMinimumWeightLb: 71, // Dogs at or above this weight need extra appointment time.
+		humanReviewWeightLb: 100, // Dogs above this weight require human review.
+		largeDogExtraMinutes: 30, // Extra appointment time for dogs from 71 through 100 lb.
+		availabilitySearchDays: 7, // Number of days checked when searching for an appointment.
 		services: [
 			{ id: "bath", name: "Bath", durationMinutes: 60, startingPriceDollars: 45 },
 			{
