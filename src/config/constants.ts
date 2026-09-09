@@ -2,6 +2,42 @@ import type { BusinessConfig } from "../models/business.js";
 
 const DEFAULT_PORT = 3000;
 const DEFAULT_BUSINESS_ID = "maple-street-dog-grooming";
+const DEFAULT_SPREADSHEET_ID = DEFAULT_BUSINESS_ID;
+
+export const EXT = {
+	googleapis: {
+		baseUrl: "https://www.googleapis.com",
+		paths: {
+			sheetsScope: "/auth/spreadsheets",
+		},
+	},
+	googleSheets: {
+		contacts: {
+			headers: ["contactPhone", "customerName", "pets", "notes", "lastContactAt"],
+			columns: {
+				contactPhone: 0,
+				customerName: 1,
+				pets: 2,
+				notes: 3,
+				lastContactAt: 4,
+			},
+		},
+		callLog: {
+			headers: [
+				"businessId",
+				"conversationId",
+				"endedAt",
+				"callerPhone",
+				"contactPhone",
+				"intent",
+				"outcomeStatus",
+				"outcomeSummary",
+				"callbackRequested",
+				"appointmentId",
+			],
+		},
+	},
+};
 
 export const APPLICATION_CONFIG = {
 	port: getPort(),
@@ -28,8 +64,18 @@ export const BUSINESS_CONFIGS: BusinessConfig[] = [
 		humanReviewWeightLb: 100, // Dogs above this weight require human review.
 		largeDogExtraMinutes: 30, // Extra appointment time for dogs from 71 through 100 lb.
 		availabilitySearchDays: 7, // Number of days checked when searching for an appointment.
+		sheets: {
+			spreadsheetId: getSpreadsheetId(),
+			contactsTabName: "Contacts",
+			callLogTabName: "Call Log",
+		},
 		services: [
-			{ id: "bath", name: "Bath", durationMinutes: 60, startingPriceDollars: 45 },
+			{
+				id: "bath",
+				name: "Bath",
+				durationMinutes: 60,
+				startingPriceDollars: 45,
+			},
 			{
 				id: "bath-and-trim",
 				name: "Bath and Trim",
@@ -65,4 +111,22 @@ function getPort(): number {
 	}
 
 	return port;
+}
+
+export function getGoogleServiceAccountCredentials(): {
+	clientEmail: string;
+	privateKey: string;
+} {
+	const clientEmail = process.env.GOOGLE_CLIENT_EMAIL?.trim();
+	const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n").trim();
+
+	if (!clientEmail || !privateKey) {
+		throw new Error("GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY are required");
+	}
+
+	return { clientEmail, privateKey };
+}
+
+function getSpreadsheetId(): string {
+	return process.env.GOOGLE_SPREADSHEET_ID?.trim() || DEFAULT_SPREADSHEET_ID;
 }

@@ -7,6 +7,12 @@ export interface GroomingService {
 	startingPriceDollars: number;
 }
 
+export interface BusinessSheetsConfig {
+	spreadsheetId: string;
+	contactsTabName: string;
+	callLogTabName: string;
+}
+
 export interface BusinessConfig {
 	id: string;
 	name: string;
@@ -24,4 +30,5 @@ export interface BusinessConfig {
 	largeDogExtraMinutes: number;
 	availabilitySearchDays: number;
 	services: GroomingService[];
+	sheets: BusinessSheetsConfig;
 }

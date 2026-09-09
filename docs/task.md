@@ -18,7 +18,7 @@ This is the implementation backlog for Phase 1. The approved behavior remains in
 - [x] T01 — Conversation entry contract and tenant context
 - [x] T02 — Conversation and domain model
 - [x] T03 — Informational enquiries
-- [ ] T04 — Google Sheets persistence
+- [x] T04 — Google Sheets persistence
 - [ ] T05 — Calendar availability
 - [ ] T06 — Appointment booking
 - [ ] T07 — Appointment lookup, rescheduling, and cancellation
@@ -95,9 +95,15 @@ Complete when:
 
 ## T04 — Google Sheets persistence
 
-Status: Pending
+Status: Complete
 
 Goal: Persist contacts and conversation outcomes behind domain interfaces.
+
+Decision:
+
+- Use Google service-account credentials from `GOOGLE_CLIENT_EMAIL` and `GOOGLE_PRIVATE_KEY`.
+- Keep spreadsheet IDs and tab names in the selected `BusinessConfig`.
+- Use a fake spreadsheet client in tests and the Google Sheets client for live persistence.
 
 Complete when:
 

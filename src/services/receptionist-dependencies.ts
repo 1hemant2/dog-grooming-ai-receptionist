@@ -2,7 +2,11 @@ import type { Appointment, AppointmentSlot } from "../models/appointment.js";
 import type { BusinessConfig, ServiceId } from "../models/business.js";
 import type { Conversation } from "../models/conversation.js";
 import type { Customer, Pet } from "../models/customer.js";
-import type { ConversationOutcome, InterpretedMessage } from "../models/receptionist.js";
+import type {
+	ConversationOutcome,
+	InterpretedMessage,
+	ReceptionistIntent,
+} from "../models/receptionist.js";
 
 export interface AvailabilityRequest {
 	businessId: string;
@@ -33,6 +37,8 @@ export interface ContactRecord {
 	businessId: string;
 	customer: Customer;
 	pets: readonly Pet[];
+	notes?: string;
+	lastContactAt: string;
 }
 
 export interface Contacts {
@@ -46,6 +52,7 @@ export interface Contacts {
 export interface CallLogEntry {
 	businessId: string;
 	conversationId: string;
+	intent: ReceptionistIntent;
 	callerPhone?: string;
 	contactPhone?: string;
 	outcome: ConversationOutcome;

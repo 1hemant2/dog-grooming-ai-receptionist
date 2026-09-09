@@ -21,6 +21,11 @@ The server listens on `http://localhost:3000`. Check it with:
 curl http://localhost:3000/health
 ```
 
+For live Google Sheets persistence, enable the Google Sheets API, create a service account, and
+share the spreadsheet with that account's email address. Set `GOOGLE_CLIENT_EMAIL` and
+`GOOGLE_PRIVATE_KEY` in `.env`; store newline characters in the private key as `\\n`. An API key
+alone cannot authorize writes to a private spreadsheet.
+
 Start or continue a conversation with:
 
 ```bash
