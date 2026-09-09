@@ -13,6 +13,10 @@ export interface BusinessSheetsConfig {
 	callLogTabName: string;
 }
 
+export interface BusinessCalendarConfig {
+	calendarId: string;
+}
+
 export interface BusinessConfig {
 	id: string;
 	name: string;
@@ -29,6 +33,8 @@ export interface BusinessConfig {
 	humanReviewWeightLb: number;
 	largeDogExtraMinutes: number;
 	availabilitySearchDays: number;
+	availabilitySlotIncrementMinutes: number;
 	services: GroomingService[];
 	sheets: BusinessSheetsConfig;
+	calendar: BusinessCalendarConfig;
 }

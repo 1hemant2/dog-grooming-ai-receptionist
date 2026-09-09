@@ -11,9 +11,37 @@ import type {
 export interface AvailabilityRequest {
 	businessId: string;
 	serviceId: ServiceId;
-	durationMinutes: number;
+	dogWeightLb: number;
 	searchFrom: string;
-	searchUntil: string;
+	safetyConcern?: string;
+}
+
+export type AvailabilityStatus = "available" | "unavailable" | "needs_human";
+
+export interface AvailabilityResult {
+	status: AvailabilityStatus;
+	slots: AppointmentSlot[];
+	reason?: string;
+}
+
+export interface CalendarEventRequest {
+	businessId: string;
+	timeMin: string;
+	timeMax: string;
+}
+
+export interface CalendarEvent {
+	id: string;
+	startAt: string;
+	endAt: string;
+}
+
+export interface CalendarEventSource {
+	findEvents(request: CalendarEventRequest): Promise<readonly CalendarEvent[]>;
+}
+
+export interface CalendarAvailability {
+	findAvailableSlots(request: AvailabilityRequest): Promise<AvailabilityResult>;
 }
 
 export interface AppointmentRequest {
@@ -25,8 +53,7 @@ export interface AppointmentRequest {
 	endAt: string;
 }
 
-export interface Calendar {
-	findAvailableSlots(request: AvailabilityRequest): Promise<AppointmentSlot[]>;
+export interface Calendar extends CalendarAvailability {
 	findAppointments(businessId: string, contactPhone: string): Promise<Appointment[]>;
 	createAppointment(request: AppointmentRequest): Promise<Appointment>;
 	rescheduleAppointment(appointmentId: string, slot: AppointmentSlot): Promise<Appointment>;

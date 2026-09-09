@@ -19,7 +19,7 @@ This is the implementation backlog for Phase 1. The approved behavior remains in
 - [x] T02 — Conversation and domain model
 - [x] T03 — Informational enquiries
 - [x] T04 — Google Sheets persistence
-- [ ] T05 — Calendar availability
+- [x] T05 — Calendar availability
 - [ ] T06 — Appointment booking
 - [ ] T07 — Appointment lookup, rescheduling, and cancellation
 - [ ] T08 — Late arrivals, complaints, and human handoff
@@ -116,9 +116,16 @@ Complete when:
 
 ## T05 — Calendar availability
 
-Status: Pending
+Status: Complete
 
 Goal: Find valid appointment slots using business rules and Google Calendar data.
+
+Decision:
+
+- Use the existing Google service-account credentials with the Calendar event read/write scope.
+- Keep the business-specific Calendar ID in `BusinessConfig`.
+- Generate candidate start times in 30-minute increments.
+- Use Luxon for timezone-aware date calculations and UTC conversion.
 
 Complete when:
 

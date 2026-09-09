@@ -26,6 +26,9 @@ share the spreadsheet with that account's email address. Set `GOOGLE_CLIENT_EMAI
 `GOOGLE_PRIVATE_KEY` in `.env`; store newline characters in the private key as `\\n`. An API key
 alone cannot authorize writes to a private spreadsheet.
 
+For Calendar availability, enable the Google Calendar API, share the business calendar with the
+same service account, and set its ID in `GOOGLE_CALENDAR_ID`.
+
 Start or continue a conversation with:
 
 ```bash

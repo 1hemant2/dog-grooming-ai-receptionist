@@ -264,8 +264,6 @@ function hasHeaders(row: SpreadsheetRow, headers: readonly string[]): boolean {
 	return headers.every((header, index) => getCell(row, index) === header);
 }
 
-
-
 function getRequiredCell(row: SpreadsheetRow, column: number, fieldName: string): string {
 	const value = getCell(row, column);
 
@@ -277,7 +275,6 @@ function getRequiredCell(row: SpreadsheetRow, column: number, fieldName: string)
 
 	return value;
 }
-
 
 function getOptionalCell(row: SpreadsheetRow, column: number): string | undefined {
 	const value = getCell(row, column);

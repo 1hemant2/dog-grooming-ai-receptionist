@@ -3,12 +3,14 @@ import type { BusinessConfig } from "../models/business.js";
 const DEFAULT_PORT = 3000;
 const DEFAULT_BUSINESS_ID = "maple-street-dog-grooming";
 const DEFAULT_SPREADSHEET_ID = DEFAULT_BUSINESS_ID;
+const DEFAULT_CALENDAR_ID = DEFAULT_BUSINESS_ID;
 
 export const EXT = {
 	googleapis: {
 		baseUrl: "https://www.googleapis.com",
 		paths: {
 			sheetsScope: "/auth/spreadsheets",
+			calendarScope: "/auth/calendar.events",
 		},
 	},
 	googleSheets: {
@@ -64,10 +66,14 @@ export const BUSINESS_CONFIGS: BusinessConfig[] = [
 		humanReviewWeightLb: 100, // Dogs above this weight require human review.
 		largeDogExtraMinutes: 30, // Extra appointment time for dogs from 71 through 100 lb.
 		availabilitySearchDays: 7, // Number of days checked when searching for an appointment.
+		availabilitySlotIncrementMinutes: 30, // Candidate appointment start-time increment.
 		sheets: {
 			spreadsheetId: getSpreadsheetId(),
 			contactsTabName: "Contacts",
 			callLogTabName: "Call Log",
+		},
+		calendar: {
+			calendarId: getCalendarId(),
 		},
 		services: [
 			{
@@ -129,4 +135,8 @@ export function getGoogleServiceAccountCredentials(): {
 
 function getSpreadsheetId(): string {
 	return process.env.GOOGLE_SPREADSHEET_ID?.trim() || DEFAULT_SPREADSHEET_ID;
+}
+
+function getCalendarId(): string {
+	return process.env.GOOGLE_CALENDAR_ID?.trim() || DEFAULT_CALENDAR_ID;
 }
