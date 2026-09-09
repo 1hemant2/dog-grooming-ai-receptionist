@@ -3,14 +3,15 @@ import type { Request, RequestHandler, Response } from "express";
 import { APPLICATION_CONFIG, findBusinessConfig } from "../config/constants.js";
 import {
 	ConversationNotFoundError,
+	type ReceiveMessageInput,
 	type InMemoryConversationStore,
 } from "../models/conversation.js";
+import { isValidPhoneNumber } from "../models/customer.js";
 
-const E164_PHONE_PATTERN = /^\+[1-9]\d{7,14}$/;
 const CONVERSATION_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 interface ConversationRequestBody {
-	callerPhone: string;
+	callerPhone?: string;
 	message: string;
 	conversationId: string | undefined;
 }
@@ -29,12 +30,17 @@ export function createReceiveMessageController(
 			}
 
 			const body = readConversationBody(request);
-			const conversationId = conversationStore.receiveMessage({
+			const conversationInput: ReceiveMessageInput = {
 				businessId,
-				callerPhone: body.callerPhone,
 				message: body.message,
 				conversationId: body.conversationId,
-			});
+			};
+
+			if (body.callerPhone !== undefined) {
+				conversationInput.callerPhone = body.callerPhone;
+			}
+
+			const conversationId = conversationStore.receiveMessage(conversationInput);
 
 			response.status(202).json({
 				conversationId,
@@ -67,11 +73,11 @@ function readConversationBody(request: Request): ConversationRequestBody {
 		throw new InvalidRequestError(400, "Request body must be a JSON object");
 	}
 
-	const callerPhone = readRequiredString(body, "callerPhone");
+	const callerPhone = readOptionalString(body, "callerPhone");
 	const message = readRequiredString(body, "message");
 	const conversationId = readOptionalString(body, "conversationId");
 
-	if (!E164_PHONE_PATTERN.test(callerPhone)) {
+	if (callerPhone !== undefined && !isValidPhoneNumber(callerPhone)) {
 		throw new InvalidRequestError(400, "callerPhone must use E.164 format");
 	}
 
@@ -89,7 +95,13 @@ function readConversationBody(request: Request): ConversationRequestBody {
 		);
 	}
 
-	return { callerPhone, message, conversationId };
+	const conversationBody: ConversationRequestBody = { message, conversationId };
+
+	if (callerPhone !== undefined) {
+		conversationBody.callerPhone = callerPhone;
+	}
+
+	return conversationBody;
 }
 
 function readRequiredString(body: Record<string, unknown>, field: string): string {

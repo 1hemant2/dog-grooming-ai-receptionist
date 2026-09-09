@@ -21,13 +21,25 @@ Build a text-based AI receptionist for Maple Street Dog Grooming. It should hand
 
 - Customer messages enter through `POST /conversations/messages` with JSON content.
 - `X-Business-Id` carries the business identity as trusted transport metadata for the Phase 1 demo. It is never extracted from customer-written text. A production phone adapter would derive the same context from the number called or authenticated integration.
-- The body contains `callerPhone`, `message`, and an optional `conversationId`.
-- Caller phone numbers use E.164 format.
+- The body contains `message`, an optional `callerPhone`, and an optional `conversationId`.
+- When provided, caller phone numbers use E.164 format.
+- `callerPhone` is channel metadata and is not automatically treated as the customer's preferred contact number.
 - A trusted client may provide a conversation ID with the first message, which supports IDs created by a voice provider or UI. If no ID is provided, the server creates a UUID. The same ID is returned and used for later messages.
 - Conversation state is kept in memory for Phase 1 and is lost when the process restarts.
 - A conversation cannot be resumed under another business or caller phone number.
+- A conversation that starts without a phone number can be resumed by its business and conversation ID. When a phone number is later provided, it becomes associated with that conversation and must match on subsequent requests.
 - After a call ends and its required Call Log data is saved, remove its in-memory conversation state. Do not remove the state if it must be preserved for a failed write or human handoff.
 - Successful responses contain `conversationId`, `status`, and `reply`.
+
+## Phase 1 demonstration UI
+
+- A small browser UI demonstrates the text receptionist through the existing HTTP endpoint.
+- The UI may collect a caller phone number for the conversation and keeps it after it is provided.
+- The UI asks for and confirms a `contactPhone` before customer-specific operations such as booking, rescheduling, cancellation, or appointment lookup.
+- The UI sends the business ID as trusted request metadata, not as customer-written message content.
+- After the first response, the UI stores the returned `conversationId` and sends it with later messages.
+- The UI displays the conversation replies and request status so the main Phase 1 flows can be demonstrated manually.
+- The UI does not contain business rules; it only collects input, calls the API, and displays results.
 
 ## Business defaults
 
@@ -37,7 +49,7 @@ Build a text-based AI receptionist for Maple Street Dog Grooming. It should hand
 - The shop has one groomer and handles one appointment at a time.
 - Every service has a configured duration. Calendar availability must cover the complete service duration.
 - Shop hours, timezone, services, durations, and starting prices come from configured shop information.
-- A phone number identifies a contact. Confirm the customer's name and pet name when finding an existing appointment.
+- A confirmed `contactPhone` identifies a contact. Confirm the customer's name and pet name when finding an existing appointment.
 - Prices are estimates. The final price may depend on the dog's size, coat condition, behavior, and time required.
 - The receptionist may book, reschedule, or cancel appointments, but it does not take payments, issue refunds, or apply fees.
 - Automated cancellations and rescheduling require at least 24 hours' notice. Requests inside 24 hours go to a human.
@@ -58,7 +70,7 @@ Build a text-based AI receptionist for Maple Street Dog Grooming. It should hand
 
 1. Resolve the business from trusted request metadata and load its configuration.
 2. Identify what the customer wants.
-3. Collect only the information needed for that request.
+3. Collect only the information needed for that request. For customer-specific operations, collect and confirm a `contactPhone`.
 4. Check the relevant source of truth for that business: shop information, policy, or Calendar.
 5. Answer the question, propose an available option, or hand the request to a human.
 6. Before changing Calendar, confirm the customer, pet, service, date, and time.
@@ -78,7 +90,7 @@ If a required lookup fails, the receptionist must not guess. It should explain t
 3. If only some services are offered, state what is available and ask whether the customer wants to continue with those services.
 4. Collect the pet's name, breed or mix, size, and any health or behavior information needed for safe scheduling.
 5. Check the requested appointment time only after the service and required duration are known.
-6. If the time is available, collect the customer's name and phone number, confirm the details, and book it.
+6. If the time is available, collect the customer's name and confirmed `contactPhone`, confirm the details, and book it.
 7. If the time is unavailable, offer the nearest available time on the same day, then the next day. Prefer times closest to the customer's requested time.
 8. Book only after the customer accepts an offered time.
 
@@ -152,8 +164,8 @@ If a required lookup fails, the receptionist must not guess. It should explain t
 
 ### Contacts
 
-Keep one row per phone number with the customer name, pet name, breed or mix, size, vaccination status, notes, and last-contact time.
+Keep one row per confirmed `contactPhone` with the customer name, pet name, breed or mix, size, vaccination status, notes, and last-contact time.
 
 ### Call Log
 
-Keep one row per conversation with the timestamp, phone number, intent, outcome, appointment identifier, and human-handoff summary when applicable.
+Keep one row per conversation with the timestamp, conversation ID, `callerPhone` when available, confirmed `contactPhone` when collected, intent, outcome, appointment identifier, and human-handoff summary when applicable.

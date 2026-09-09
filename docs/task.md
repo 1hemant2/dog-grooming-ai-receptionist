@@ -16,7 +16,7 @@ This is the implementation backlog for Phase 1. The approved behavior remains in
 
 - [x] T00 — Repository foundation
 - [x] T01 — Conversation entry contract and tenant context
-- [ ] T02 — Conversation and domain model
+- [x] T02 — Conversation and domain model
 - [ ] T03 — Informational enquiries
 - [ ] T04 — Google Sheets persistence
 - [ ] T05 — Calendar availability
@@ -52,14 +52,15 @@ Decisions made:
 Complete when:
 
 - The input and output contract is documented and validated.
-- Each request has a trusted business ID, caller phone number, message, and conversation ID.
+- Each request has a trusted business ID and message. A conversation ID is generated or provided, and a caller phone number may be provided.
+- A text conversation may start without a caller phone number, but customer-specific operations collect and validate a confirmed contact phone before continuing.
 - Unknown businesses and invalid requests return controlled errors.
 - Customer-written text cannot select another business.
 - Boundary tests cover valid and invalid requests.
 
 ## T02 — Conversation and domain model
 
-Status: Pending — next task
+Status: Complete
 
 Goal: Represent receptionist behavior without depending on HTTP, an LLM, Google, or another framework.
 
@@ -131,7 +132,7 @@ Goal: Safely create a confirmed grooming appointment.
 
 Complete when:
 
-- Required customer, pet, service, date, and time information is collected.
+- Required customer, confirmed contact phone, pet, service, date, and time information is collected.
 - The customer confirms the final details before any Calendar write.
 - Availability is checked again immediately before creation.
 - An accepted appointment is created once and its identifier is retained.
@@ -146,7 +147,7 @@ Goal: Safely find and change an existing appointment.
 
 Complete when:
 
-- Lookup uses phone number and confirms customer and pet names.
+- Lookup uses the confirmed contact phone and confirms customer and pet names.
 - Requests inside the 24-hour threshold go to a human without changing Calendar.
 - Rescheduling checks and reconfirms the new slot before moving the appointment.
 - Cancellation requires explicit customer confirmation.
@@ -213,6 +214,7 @@ Goal: Deliver a reproducible Phase 1 demonstration.
 
 Complete when:
 
+- A small browser UI demonstrates the text conversation through the HTTP API.
 - Calendar seed data demonstrates conflicts and rescheduling.
 - The Google Sheet contains `Contacts` and `Call Log` tabs with documented columns.
 - End-to-end tests or a repeatable demo cover every defined conversation flow.

@@ -55,6 +55,16 @@ test("accepts a new conversation message and returns its ID", async () => {
 	);
 });
 
+test("accepts a text message without a caller phone number", async () => {
+	const response = await postConversationMessage({
+		message: "What services do you offer?",
+	});
+	const body = await response.json();
+
+	assert.equal(response.status, 202);
+	assert.match(body.conversationId, /^[0-9a-f-]{36}$/);
+});
+
 test("resumes a conversation using its server-issued ID", async () => {
 	const firstResponse = await postConversationMessage({
 		callerPhone: "+14155550101",
@@ -137,7 +147,7 @@ test("does not resume a conversation for another caller", async () => {
 });
 
 interface ConversationBody {
-	callerPhone: string;
+	callerPhone?: string;
 	message: string;
 	conversationId?: string;
 }

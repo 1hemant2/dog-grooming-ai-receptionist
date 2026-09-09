@@ -46,6 +46,77 @@ test("starts a conversation with a caller-supplied ID", () => {
 	assert.equal(resumedConversationId, suppliedConversationId);
 });
 
+test("allows a text conversation to start without a phone number", () => {
+	const store = new InMemoryConversationStore();
+	const conversationId = store.receiveMessage({
+		businessId: firstMessage.businessId,
+		message: firstMessage.message,
+		conversationId: undefined,
+	});
+
+	const resumedConversationId = store.receiveMessage({
+		businessId: firstMessage.businessId,
+		message: "I would like to know your prices.",
+		conversationId,
+	});
+
+	assert.equal(resumedConversationId, conversationId);
+});
+
+test("associates a phone number when it is provided later", () => {
+	const store = new InMemoryConversationStore();
+	const conversationId = store.receiveMessage({
+		businessId: firstMessage.businessId,
+		message: firstMessage.message,
+		conversationId: undefined,
+	});
+
+	store.receiveMessage({
+		businessId: firstMessage.businessId,
+		callerPhone: firstMessage.callerPhone,
+		message: "I want to book an appointment.",
+		conversationId,
+	});
+
+	assert.throws(
+		() =>
+			store.receiveMessage({
+				businessId: firstMessage.businessId,
+				message: "Continue without a phone number",
+				conversationId,
+			}),
+		ConversationNotFoundError,
+	);
+
+	assert.throws(
+		() =>
+			store.receiveMessage({
+				businessId: firstMessage.businessId,
+				callerPhone: "+14155550101",
+				message: "Continue",
+				conversationId,
+			}),
+		ConversationNotFoundError,
+	);
+});
+
+test("loads a conversation so orchestration can confirm contact details", () => {
+	const store = new InMemoryConversationStore();
+	const conversationId = store.receiveMessage({
+		businessId: firstMessage.businessId,
+		message: firstMessage.message,
+		conversationId: undefined,
+	});
+
+	const conversation = store.getConversation({
+		businessId: firstMessage.businessId,
+		conversationId,
+	});
+	conversation.confirmContactPhone(firstMessage.callerPhone);
+
+	assert.equal(conversation.contactPhone, firstMessage.callerPhone);
+});
+
 test("does not resume a conversation for another business or caller", () => {
 	const store = new InMemoryConversationStore();
 	const conversationId = store.receiveMessage(firstMessage);

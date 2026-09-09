@@ -32,7 +32,9 @@ curl --request POST http://localhost:3000/conversations/messages \
 
 The response includes a `conversationId`. Include it in the JSON body of later messages. A UI or
 voice adapter may provide its own conversation ID with the first message. Phase 1 keeps conversation
-state in memory, so IDs stop working when the server restarts.
+state in memory, so IDs stop working when the server restarts. `callerPhone` is optional for initial
+text messages. Customer-specific operations require a confirmed `contactPhone` before booking or
+appointment lookup.
 
 ## Commands
 
