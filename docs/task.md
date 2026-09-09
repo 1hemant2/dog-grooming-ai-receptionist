@@ -17,7 +17,7 @@ This is the implementation backlog for Phase 1. The approved behavior remains in
 - [x] T00 — Repository foundation
 - [x] T01 — Conversation entry contract and tenant context
 - [x] T02 — Conversation and domain model
-- [ ] T03 — Informational enquiries
+- [x] T03 — Informational enquiries
 - [ ] T04 — Google Sheets persistence
 - [ ] T05 — Calendar availability
 - [ ] T06 — Appointment booking
@@ -74,7 +74,7 @@ Complete when:
 
 ## T03 — Informational enquiries
 
-Status: Pending
+Status: Complete
 
 Goal: Answer questions that only need the selected business configuration.
 

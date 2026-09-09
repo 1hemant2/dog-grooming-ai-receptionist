@@ -14,6 +14,8 @@ export interface BusinessConfig {
 	openingTime: string;
 	closingTime: string;
 	closedDays: string[];
+	rabiesVaccinationRequired: boolean;
+	rabiesVaccinationGuidance: string;
 	groomerCapacity: number;
 	rescheduleNoticeHours: number;
 	lateHandoffMinutes: number;

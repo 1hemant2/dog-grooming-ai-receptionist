@@ -19,6 +19,8 @@ export const BUSINESS_CONFIGS: BusinessConfig[] = [
 		openingTime: "09:00",
 		closingTime: "17:00",
 		closedDays: ["Sunday"],
+		rabiesVaccinationRequired: true,
+		rabiesVaccinationGuidance: "Current rabies vaccination proof is required before grooming.",
 		groomerCapacity: 1, // Maximum number of appointments that can run at the same time.
 		rescheduleNoticeHours: 24, // Minimum notice required for automatic cancellation or rescheduling.
 		lateHandoffMinutes: 15, // Delays at or above this threshold require human review.
