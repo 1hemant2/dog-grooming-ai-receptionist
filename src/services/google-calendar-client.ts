@@ -1,15 +1,18 @@
 import { google } from "googleapis";
 
 import { EXT, getGoogleServiceAccountCredentials } from "../config/constants.js";
+import { Appointment } from "../models/appointment.js";
 import type { BusinessConfig } from "../models/business.js";
 import { localDateTimeToDate } from "./calendar-time.js";
 import type {
+	AppointmentRequest,
+	CalendarAppointmentWriter,
 	CalendarEvent,
 	CalendarEventRequest,
 	CalendarEventSource,
 } from "./receptionist-dependencies.js";
 
-export class GoogleCalendarClient implements CalendarEventSource {
+export class GoogleCalendarClient implements CalendarEventSource, CalendarAppointmentWriter {
 	private readonly calendarApi: ReturnType<typeof google.calendar>;
 
 	constructor(
@@ -59,6 +62,54 @@ export class GoogleCalendarClient implements CalendarEventSource {
 		} while (pageToken);
 
 		return events;
+	}
+
+	async createAppointment(request: AppointmentRequest): Promise<Appointment> {
+		if (request.businessId !== this.business.id) {
+			throw new Error("Business does not match the configured calendar");
+		}
+
+		const service = this.business.services.find(
+			(configuredService) => configuredService.id === request.serviceId,
+		);
+
+		if (!service) {
+			throw new Error("Appointment service is not configured for this business");
+		}
+
+		const response = await this.calendarApi.events.insert({
+			calendarId: this.business.calendar.calendarId,
+			requestBody: {
+				summary: `${service.name} for ${request.petName}`,
+				description: `Customer: ${request.customerName}\nContact: ${request.contactPhone}`,
+				start: {
+					dateTime: request.startAt,
+					timeZone: this.business.timezone,
+				},
+				end: {
+					dateTime: request.endAt,
+					timeZone: this.business.timezone,
+				},
+			},
+		});
+
+		const eventId = response.data.id;
+		const startAt = response.data.start?.dateTime;
+		const endAt = response.data.end?.dateTime;
+
+		if (!eventId || !startAt || !endAt) {
+			throw new Error("Created Calendar event is missing an ID or time range");
+		}
+
+		return new Appointment({
+			id: eventId,
+			businessId: this.business.id,
+			contactPhone: request.contactPhone,
+			petName: request.petName,
+			serviceId: request.serviceId,
+			startAt,
+			endAt,
+		});
 	}
 }
 

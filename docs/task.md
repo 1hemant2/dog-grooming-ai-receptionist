@@ -20,7 +20,7 @@ This is the implementation backlog for Phase 1. The approved behavior remains in
 - [x] T03 — Informational enquiries
 - [x] T04 — Google Sheets persistence
 - [x] T05 — Calendar availability
-- [ ] T06 — Appointment booking
+- [x] T06 — Appointment booking
 - [ ] T07 — Appointment lookup, rescheduling, and cancellation
 - [ ] T08 — Late arrivals, complaints, and human handoff
 - [ ] T09 — LLM interpretation and conversation orchestration
@@ -139,9 +139,14 @@ Complete when:
 
 ## T06 — Appointment booking
 
-Status: Pending
+Status: Complete
 
 Goal: Safely create a confirmed grooming appointment.
+
+Decision:
+
+- Keep booking orchestration separate from HTTP and LLM interpretation.
+- Use the conversation ID and requested booking details as the Phase 1 duplicate key.
 
 Complete when:
 

@@ -46,6 +46,7 @@ export interface CalendarAvailability {
 
 export interface AppointmentRequest {
 	businessId: string;
+	customerName: string;
 	contactPhone: string;
 	petName: string;
 	serviceId: ServiceId;
@@ -53,9 +54,12 @@ export interface AppointmentRequest {
 	endAt: string;
 }
 
-export interface Calendar extends CalendarAvailability {
-	findAppointments(businessId: string, contactPhone: string): Promise<Appointment[]>;
+export interface CalendarAppointmentWriter {
 	createAppointment(request: AppointmentRequest): Promise<Appointment>;
+}
+
+export interface Calendar extends CalendarAvailability, CalendarAppointmentWriter {
+	findAppointments(businessId: string, contactPhone: string): Promise<Appointment[]>;
 	rescheduleAppointment(appointmentId: string, slot: AppointmentSlot): Promise<Appointment>;
 	cancelAppointment(appointmentId: string): Promise<void>;
 }
