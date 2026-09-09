@@ -58,11 +58,18 @@ export interface CalendarAppointmentWriter {
 	createAppointment(request: AppointmentRequest): Promise<Appointment>;
 }
 
-export interface Calendar extends CalendarAvailability, CalendarAppointmentWriter {
+export interface AppointmentCalendar {
 	findAppointments(businessId: string, contactPhone: string): Promise<Appointment[]>;
 	rescheduleAppointment(appointmentId: string, slot: AppointmentSlot): Promise<Appointment>;
 	cancelAppointment(appointmentId: string): Promise<void>;
 }
+
+export interface OwnerNotifier {
+	notify(message: string): Promise<void>;
+}
+
+export interface Calendar
+	extends CalendarAvailability, CalendarAppointmentWriter, AppointmentCalendar {}
 
 export interface ContactRecord {
 	businessId: string;

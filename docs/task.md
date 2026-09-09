@@ -21,7 +21,7 @@ This is the implementation backlog for Phase 1. The approved behavior remains in
 - [x] T04 — Google Sheets persistence
 - [x] T05 — Calendar availability
 - [x] T06 — Appointment booking
-- [ ] T07 — Appointment lookup, rescheduling, and cancellation
+- [x] T07 — Appointment lookup, rescheduling, and cancellation
 - [ ] T08 — Late arrivals, complaints, and human handoff
 - [ ] T09 — LLM interpretation and conversation orchestration
 - [ ] T10 — Reliability and safety checks
@@ -159,9 +159,14 @@ Complete when:
 
 ## T07 — Appointment lookup, rescheduling, and cancellation
 
-Status: Pending
+Status: Complete
 
 Goal: Safely find and change an existing appointment.
+
+Decision:
+
+- Use an injected `OwnerNotifier` boundary for owner notifications.
+- Confirm identity with the contact phone, customer name, and pet name before changes.
 
 Complete when:
 
