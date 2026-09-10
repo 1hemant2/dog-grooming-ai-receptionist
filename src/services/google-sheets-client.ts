@@ -58,7 +58,7 @@ export class GoogleSheetsClient implements SpreadsheetClient {
 			{
 				spreadsheetId,
 				range: `${quoteTabName(tabName)}!A${rowNumber}:${getColumnName(values.length)}${rowNumber}`,
-				valueInputOption: "USER_ENTERED",
+				valueInputOption: "RAW",
 				requestBody: { values: [Array.from(values)] },
 			},
 			{ timeout: APPLICATION_CONFIG.externalRequestTimeoutMs },

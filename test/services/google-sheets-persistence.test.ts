@@ -165,6 +165,34 @@ test("updates the existing contact row instead of creating a duplicate", async (
 	);
 });
 
+test("matches a legacy sheet phone value that lost its plus sign", async () => {
+	const client = new FakeSpreadsheetClient();
+	client.setRows(business.sheets.spreadsheetId, business.sheets.contactsTabName, [
+		{
+			rowNumber: 1,
+			values: ["contactPhone", "customerName", "pets", "notes", "lastContactAt"],
+		},
+		{
+			rowNumber: 2,
+			values: [
+				"19534909390",
+				"Hemant",
+				'[{"name":"Tommy","weightLb":25,"rabiesVaccinationStatus":"current"}]',
+				"",
+				"2026-09-11T10:00:00.000Z",
+			],
+		},
+	]);
+
+	const contacts = new GoogleSheetsContacts(business, client);
+	const contact = await contacts.findByContactPhone(business.id, "+19534909390");
+
+	assert.ok(contact);
+	assert.equal(contact.customer.contactPhone, "+19534909390");
+	assert.equal(contact.customer.name, "Hemant");
+	assert.equal(contact.pets[0]?.name, "Tommy");
+});
+
 test("rejects a sheet that already contains duplicate contact rows", async () => {
 	const client = new FakeSpreadsheetClient();
 	client.setRows(business.sheets.spreadsheetId, business.sheets.contactsTabName, [

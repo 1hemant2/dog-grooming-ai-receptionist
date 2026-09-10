@@ -24,7 +24,7 @@ test("writes appended rows from column A", async () => {
 	assert.deepEqual(updateRequests[0]?.request, {
 		spreadsheetId: "spreadsheet-id",
 		range: "'Call Log'!A2:B2",
-		valueInputOption: "USER_ENTERED",
+		valueInputOption: "RAW",
 		requestBody: { values: [["businessId", "conversationId"]] },
 	});
 });

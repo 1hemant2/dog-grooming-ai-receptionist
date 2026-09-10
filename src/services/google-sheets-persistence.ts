@@ -44,8 +44,13 @@ export class GoogleSheetsContacts implements Contacts {
 	): Promise<ContactRecord | undefined> {
 		this.ensureBusiness(businessId);
 		const rows = await this.readRows();
+		const normalizedContactPhone = normalizeStoredContactPhone(contactPhone, this.business);
 		const matchingRows = getDataRows(rows, EXT.googleSheets.contacts.headers).filter(
-			(row) => getCell(row, EXT.googleSheets.contacts.columns.contactPhone) === contactPhone,
+			(row) =>
+				normalizeStoredContactPhone(
+					getCell(row, EXT.googleSheets.contacts.columns.contactPhone),
+					this.business,
+				) === normalizedContactPhone,
 		);
 
 		if (matchingRows.length === 0) {
@@ -71,10 +76,16 @@ export class GoogleSheetsContacts implements Contacts {
 		this.ensureBusiness(contact.businessId);
 		const rows = await this.readRows();
 		const dataRows = getDataRows(rows, EXT.googleSheets.contacts.headers);
+		const normalizedContactPhone = normalizeStoredContactPhone(
+			contact.customer.contactPhone,
+			this.business,
+		);
 		const matchingRows = dataRows.filter(
 			(row) =>
-				getCell(row, EXT.googleSheets.contacts.columns.contactPhone) ===
-				contact.customer.contactPhone,
+				normalizeStoredContactPhone(
+					getCell(row, EXT.googleSheets.contacts.columns.contactPhone),
+					this.business,
+				) === normalizedContactPhone,
 		);
 
 		if (matchingRows.length > 1) {
@@ -156,11 +167,12 @@ export class GoogleSheetsContacts implements Contacts {
 
 	// convert the spread sheet details to js object.
 	private toContactRecord(businessId: string, row: SpreadsheetRow): ContactRecord {
-		const contactPhone = getRequiredCell(
+		const rawContactPhone = getRequiredCell(
 			row,
 			EXT.googleSheets.contacts.columns.contactPhone,
 			"contact phone",
 		);
+		const contactPhone = normalizeStoredContactPhone(rawContactPhone, this.business);
 		const customerName = getOptionalCell(row, EXT.googleSheets.contacts.columns.customerName);
 		const pets = parsePets(getCell(row, EXT.googleSheets.contacts.columns.pets));
 		const notes = getOptionalCell(row, EXT.googleSheets.contacts.columns.notes);
@@ -189,6 +201,24 @@ export class GoogleSheetsContacts implements Contacts {
 			});
 		}
 	}
+}
+
+function normalizeStoredContactPhone(value: string, business: BusinessConfig): string {
+	const compactPhone = value.trim().replace(/[\s().-]/g, "");
+	const countryCode = business.phone.countryCallingCode;
+	const nationalNumberDigits = business.phone.nationalNumberDigits;
+
+	if (compactPhone.startsWith("+")) return compactPhone;
+
+	if (
+		compactPhone.length === nationalNumberDigits ||
+		(compactPhone.startsWith(countryCode) &&
+			compactPhone.length === countryCode.length + nationalNumberDigits)
+	) {
+		return `+${compactPhone.length === nationalNumberDigits ? countryCode : ""}${compactPhone}`;
+	}
+
+	return compactPhone;
 }
 
 // append the conversation logs in call log sheet

@@ -966,6 +966,54 @@ test("asks for one missing appointment identity field at a time", async () => {
 	assert.equal(result.reply, "What contact phone number is on the appointment?");
 });
 
+test("includes the current and proposed times in reschedule confirmation", async () => {
+	const existingAppointment = new Appointment({
+		id: "appointment-to-reschedule",
+		businessId: configuredBusiness.id,
+		contactPhone: "+14155550100",
+		petName: "Roni",
+		serviceId: "bath",
+		startAt: "2026-09-11T22:00:00.000Z",
+		endAt: "2026-09-11T23:00:00.000Z",
+	});
+	const dependencies = createDependencies();
+	dependencies.management = {
+		async findAppointments() {
+			return { status: "found", appointments: [existingAppointment] };
+		},
+		async reschedule() {
+			throw new Error("Reschedule should wait for confirmation");
+		},
+		async cancel() {
+			throw new Error("Not used in this test");
+		},
+	};
+	const orchestrator = new ConversationOrchestrator(
+		configuredBusiness,
+		new FakeInterpreter({
+			intent: "reschedule_appointment",
+			customerName: "Alex Morgan",
+			contactPhone: "+14155550100",
+			contactPhoneConfirmed: true,
+			petName: "Roni",
+			requestedDate: "2026-09-12",
+			requestedTime: "15:00",
+		}),
+		dependencies,
+	);
+
+	const result = await orchestrator.handleMessage(
+		"Move it to tomorrow at 3 PM",
+		createConversation(),
+	);
+
+	assert.equal(result.outcome.status, "needs_information");
+	assert.equal(
+		result.reply,
+		"I found Roni's Bath appointment for Friday, September 11 at 3:00 PM PDT. Would you like me to reschedule it to Saturday, September 12 at 3:00 PM PDT?",
+	);
+});
+
 test("passes confirmed booking details to the booking service", async () => {
 	let receivedRequest: AppointmentBookingRequest | undefined;
 	const orchestrator = new ConversationOrchestrator(

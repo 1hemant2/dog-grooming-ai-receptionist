@@ -175,6 +175,7 @@ Gemini receives only a bounded recent-history window plus the current active int
 2. If the appointment starts in less than 24 hours, do not change Calendar and hand off to a human.
 3. Otherwise, ask for the customer's preferred new date and time.
 4. If the requested time is available, confirm it, move the appointment, and notify the business owner.
+   The confirmation should identify the pet and service, show the current appointment time, and show the proposed local time with the business timezone.
 5. If it is unavailable, offer the nearest available time before or after the requested time.
 6. Move the appointment only after the customer accepts an alternative.
 7. Record the outcome in Sheets.
@@ -206,6 +207,7 @@ Gemini receives only a bounded recent-history window plus the current active int
 ### Contacts
 
 Keep one row per confirmed `contactPhone` with the customer name, pet name, breed or mix, size, vaccination status, notes, and last-contact time.
+Store contact phone numbers as plain-text canonical E.164 values. Legacy values without the leading `+` must still be normalized when read.
 Persist collected callback contact details before notifying the owner when a human handoff requires a callback.
 
 ### Call Log

@@ -1225,10 +1225,22 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 		);
 
 		if (interpretedMessage.confirmation !== true) {
-			const appointmentTime = formatLocalDateTime(slot.startAt, this.business.timezone);
+			const currentAppointmentTime = formatLocalDateTime(
+				lookup.appointment.startAt,
+				this.business.timezone,
+			);
+			const proposedAppointmentTime = formatLocalDateTime(
+				slot.startAt,
+				this.business.timezone,
+			);
+			const serviceName =
+				this.business.services.find(
+					(service) => service.id === lookup.appointment?.serviceId,
+				)?.name ?? lookup.appointment.serviceId;
+
 			return this.ask(
 				conversation,
-				`I found ${lookup.appointment.petName}'s appointment. Would you like me to move it to ${appointmentTime}?`,
+				`I found ${lookup.appointment.petName}'s ${serviceName} appointment for ${currentAppointmentTime}. Would you like me to reschedule it to ${proposedAppointmentTime}?`,
 				"appointment_confirmation",
 			);
 		}
