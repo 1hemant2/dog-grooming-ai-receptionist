@@ -7,8 +7,6 @@ import type {
 	AppointmentRequest,
 	AvailabilityRequest,
 	AvailabilityResult,
-	CallLog,
-	CallLogEntry,
 	CalendarAppointmentWriter,
 	CalendarAvailability,
 	ContactRecord,
@@ -113,20 +111,11 @@ class FakeContacts implements Contacts {
 	}
 }
 
-class FakeCallLog implements CallLog {
-	readonly entries: CallLogEntry[] = [];
-
-	async append(entry: CallLogEntry): Promise<void> {
-		this.entries.push(entry);
-	}
-}
-
 function createBookingService(): {
 	service: AppointmentBookingService;
 	availability: FakeCalendarAvailability;
 	calendarWriter: FakeCalendarWriter;
 	contacts: FakeContacts;
-	callLog: FakeCallLog;
 } {
 	if (!business) {
 		throw new Error("Expected Maple Street business configuration in test setup");
@@ -135,21 +124,19 @@ function createBookingService(): {
 	const availability = new FakeCalendarAvailability();
 	const calendarWriter = new FakeCalendarWriter();
 	const contacts = new FakeContacts();
-	const callLog = new FakeCallLog();
 	const service = new AppointmentBookingService(
 		business,
 		availability,
 		calendarWriter,
 		contacts,
-		callLog,
 		() => new Date("2026-09-09T12:00:00.000Z"),
 	);
 
-	return { service, availability, calendarWriter, contacts, callLog };
+	return { service, availability, calendarWriter, contacts };
 }
 
 test("books after final availability check and persists the result", async () => {
-	const { service, availability, calendarWriter, contacts, callLog } = createBookingService();
+	const { service, availability, calendarWriter, contacts } = createBookingService();
 
 	const appointment = await service.book(bookingRequest);
 
@@ -159,13 +146,11 @@ test("books after final availability check and persists the result", async () =>
 	assert.equal(calendarWriter.requests[0]?.customerName, "Alex Morgan");
 	assert.equal(contacts.savedContacts.length, 1);
 	assert.equal(contacts.savedContacts[0]?.pets[0]?.name, "Milo");
-	assert.equal(callLog.entries.length, 1);
-	assert.equal(callLog.entries[0]?.outcome.status, "completed");
-	assert.equal(callLog.entries[0]?.outcome.appointmentId, appointment.id);
+	assert.equal(appointment.id, "appointment-1");
 });
 
 test("does not write before customer confirmation", async () => {
-	const { service, availability, calendarWriter, contacts, callLog } = createBookingService();
+	const { service, availability, calendarWriter, contacts } = createBookingService();
 
 	await assert.rejects(
 		service.book({ ...bookingRequest, confirmed: false }),
@@ -175,11 +160,10 @@ test("does not write before customer confirmation", async () => {
 	assert.equal(availability.requests.length, 0);
 	assert.equal(calendarWriter.requests.length, 0);
 	assert.equal(contacts.savedContacts.length, 0);
-	assert.equal(callLog.entries.length, 0);
 });
 
 test("does not create an appointment when the final availability check finds a conflict", async () => {
-	const { service, availability, calendarWriter, contacts, callLog } = createBookingService();
+	const { service, availability, calendarWriter, contacts } = createBookingService();
 	availability.result = {
 		status: "available",
 		slots: [new AppointmentSlot("2026-09-10T16:30:00.000Z", "2026-09-10T17:30:00.000Z")],
@@ -189,7 +173,6 @@ test("does not create an appointment when the final availability check finds a c
 
 	assert.equal(calendarWriter.requests.length, 0);
 	assert.equal(contacts.savedContacts.length, 0);
-	assert.equal(callLog.entries.length, 0);
 });
 
 test("does not create an appointment when availability requires human review", async () => {
@@ -221,17 +204,16 @@ test("does not create an appointment without current rabies vaccination status",
 });
 
 test("returns a controlled error when Calendar creation fails", async () => {
-	const { service, calendarWriter, contacts, callLog } = createBookingService();
+	const { service, calendarWriter, contacts } = createBookingService();
 	calendarWriter.appointmentFailure = new Error("Calendar is unavailable");
 
 	await assert.rejects(service.book(bookingRequest), CalendarAppointmentError);
 
 	assert.equal(contacts.savedContacts.length, 0);
-	assert.equal(callLog.entries.length, 0);
 });
 
 test("creates one Calendar appointment for duplicate submissions", async () => {
-	const { service, availability, calendarWriter, contacts, callLog } = createBookingService();
+	const { service, availability, calendarWriter, contacts } = createBookingService();
 
 	const firstBooking = service.book(bookingRequest);
 	const duplicateBooking = service.book(bookingRequest);
@@ -244,7 +226,6 @@ test("creates one Calendar appointment for duplicate submissions", async () => {
 	assert.equal(availability.requests.length, 1);
 	assert.equal(calendarWriter.requests.length, 1);
 	assert.equal(contacts.savedContacts.length, 1);
-	assert.equal(callLog.entries.length, 1);
 });
 
 test("does not create a second Calendar appointment after persistence fails", async () => {

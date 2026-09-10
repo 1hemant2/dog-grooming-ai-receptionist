@@ -109,7 +109,7 @@ Complete when:
 
 - A contact is found and updated by phone number without creating duplicates.
 - `Contacts` stores the required customer and pet fields.
-- `Call Log` records every completed conversation and human-handoff context.
+- `Call Log` records every completed conversation, all handled intents, and human-handoff context.
 - Business-specific spreadsheet configuration is used.
 - Google failures return controlled application errors without losing conversation context.
 - Adapter tests use a fake Google boundary and do not call the live API.
@@ -154,7 +154,7 @@ Complete when:
 - The customer confirms the final details before any Calendar write.
 - Availability is checked again immediately before creation.
 - An accepted appointment is created once and its identifier is retained.
-- Contacts and Call Log are updated after the Calendar result.
+- Contacts are updated after the Calendar result, and the final Call Log row includes the handled intents and outcome.
 - Conflicts, write failures, and duplicate submissions are tested.
 
 ## T07 — Appointment lookup, rescheduling, and cancellation
@@ -174,7 +174,7 @@ Complete when:
 - Requests inside the 24-hour threshold go to a human without changing Calendar.
 - Rescheduling checks and reconfirms the new slot before moving the appointment.
 - Cancellation requires explicit customer confirmation.
-- Successful changes notify the owner and are recorded in Call Log.
+- Successful changes notify the owner and are included in the final Call Log row.
 - Missing, ambiguous, stale, and failed Calendar operations are tested.
 
 ## T08 — Late arrivals, complaints, and human handoff

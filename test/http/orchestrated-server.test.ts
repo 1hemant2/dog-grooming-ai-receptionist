@@ -3,11 +3,16 @@ import { after, before, test } from "node:test";
 
 import { createConversationOutcome } from "../../src/models/receptionist.js";
 import { InMemoryConversationStore } from "../../src/models/conversation.js";
-import { createHttpServer } from "../../src/http/server.js";
+import { closeServerGracefully, createHttpServer } from "../../src/http/server.js";
 import type { ConversationMessageHandler } from "../../src/services/conversation-orchestrator.js";
 
 const conversationStore = new InMemoryConversationStore();
+const endedConversationIds: string[] = [];
 const orchestrator: ConversationMessageHandler = {
+	async endConversation(conversation) {
+		endedConversationIds.push(conversation.id);
+	},
+
 	async handleMessage(message, conversation) {
 		assert.equal(conversation.businessId, "maple-street-dog-grooming");
 
@@ -45,9 +50,7 @@ before(async () => {
 });
 
 after(async () => {
-	await new Promise<void>((resolve, reject) => {
-		server.close((error) => (error ? reject(error) : resolve()));
-	});
+	await closeServerGracefully(server);
 });
 
 test("passes HTTP messages through the configured conversation handler", async () => {
@@ -81,4 +84,48 @@ test("returns the appointment ID needed to recover a partial write", async () =>
 	assert.equal(response.status, 200);
 	assert.equal(body.status, "needs_human");
 	assert.equal(body.appointmentId, "appointment-partial-1");
+});
+
+test("ends a conversation before removing it from memory", async () => {
+	const messageResponse = await fetch(`${baseUrl}/conversations/messages`, {
+		method: "POST",
+		headers: {
+			"content-type": "application/json",
+			"x-business-id": "maple-street-dog-grooming",
+		},
+		body: JSON.stringify({ message: "What services do you offer?" }),
+	});
+	const messageBody = await messageResponse.json();
+
+	const endResponse = await fetch(`${baseUrl}/conversations/${messageBody.conversationId}/end`, {
+		method: "POST",
+		headers: {
+			"content-type": "application/json",
+			"x-business-id": "maple-street-dog-grooming",
+		},
+		body: JSON.stringify({}),
+	});
+	const endBody = await endResponse.json();
+
+	assert.equal(endResponse.status, 200);
+	assert.deepEqual(endBody, {
+		conversationId: messageBody.conversationId,
+		status: "ended",
+	});
+	assert.deepEqual(endedConversationIds, [messageBody.conversationId]);
+
+	const resumeResponse = await fetch(`${baseUrl}/conversations/messages`, {
+		method: "POST",
+		headers: {
+			"content-type": "application/json",
+			"x-business-id": "maple-street-dog-grooming",
+		},
+		body: JSON.stringify({
+			conversationId: messageBody.conversationId,
+			message: "Continue",
+		}),
+	});
+
+	await resumeResponse.text();
+	assert.equal(resumeResponse.status, 404);
 });

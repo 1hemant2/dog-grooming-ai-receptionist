@@ -36,21 +36,20 @@ export function createConversationOrchestratorResolver(): (
 			availability,
 			calendarClient,
 			contacts,
-			callLog,
 		);
 		const management = new AppointmentManagementService(
 			business,
 			calendarClient,
 			availability,
 			contacts,
-			callLog,
 			ownerNotifier,
 		);
-		const support = new CustomerSupportService(business, contacts, callLog, ownerNotifier);
+		const support = new CustomerSupportService(business, contacts, ownerNotifier);
 
 		orchestrators.set(
 			business.id,
 			new ConversationOrchestrator(business, geminiInterpreter, {
+				callLog,
 				information,
 				booking,
 				management,

@@ -21,6 +21,8 @@ body {
 	margin: 0;
 	min-width: 320px;
 	min-height: 100vh;
+	height: 100vh;
+	overflow: hidden;
 	background:
 		radial-gradient(circle at 12% 15%, rgba(35, 162, 154, 0.13), transparent 30rem), #eef3f4;
 }
@@ -37,29 +39,31 @@ button {
 
 .workspace {
 	display: grid;
-	grid-template-columns: minmax(16rem, 21rem) minmax(0, 48rem);
-	min-height: 100vh;
-	max-width: 76rem;
+	grid-template-columns: minmax(16rem, 3fr) minmax(0, 7fr);
+	height: 100vh;
+	min-height: 0;
+	max-width: 96rem;
 	margin: 0 auto;
-	padding: 2rem;
+	padding: 1.25rem 1.5rem;
 	gap: 1.25rem;
 }
 
-.demo-panel,
+.sidebar-panel,
 .conversation-panel {
 	border: 1px solid rgba(23, 43, 50, 0.12);
 	box-shadow: 0 1.5rem 4rem rgba(23, 43, 50, 0.08);
 }
 
-.demo-panel {
+.sidebar-panel {
 	display: flex;
 	flex-direction: column;
-	align-self: center;
-	min-height: 38rem;
-	padding: 2rem;
+	align-self: stretch;
+	min-height: 0;
+	padding: 1.5rem;
 	border-radius: 1.5rem;
 	background: #17343a;
 	color: #f7fbfb;
+	overflow: hidden;
 }
 
 .business-mark {
@@ -67,7 +71,7 @@ button {
 	place-items: center;
 	width: 3rem;
 	height: 3rem;
-	margin-bottom: 2.75rem;
+	margin-bottom: 1.75rem;
 	border-radius: 0.9rem;
 	background: #32c6b8;
 	color: #10292e;
@@ -84,10 +88,6 @@ button {
 	text-transform: uppercase;
 }
 
-.demo-panel .eyebrow {
-	color: #8edbd4;
-}
-
 h1,
 h2,
 p {
@@ -95,8 +95,8 @@ p {
 }
 
 h1 {
-	margin-bottom: 2.75rem;
-	font-size: clamp(2rem, 4vw, 3rem);
+	margin-bottom: 1.25rem;
+	font-size: clamp(1.85rem, 3.2vw, 2.6rem);
 	line-height: 0.98;
 	letter-spacing: -0.055em;
 }
@@ -115,13 +115,6 @@ h2 {
 	font-weight: 700;
 }
 
-.field-label span,
-.field-note {
-	color: #a9bec2;
-	font-weight: 500;
-}
-
-input,
 textarea {
 	width: 100%;
 	border: 1px solid #bfd0d3;
@@ -131,37 +124,14 @@ textarea {
 	outline: none;
 }
 
-input {
-	padding: 0.85rem 1rem;
-	border-color: rgba(255, 255, 255, 0.22);
-	background: rgba(255, 255, 255, 0.08);
-	color: #ffffff;
-}
-
-input::placeholder {
-	color: #8ba1a6;
-}
-
-input:focus,
 textarea:focus {
 	border-color: #32c6b8;
 	box-shadow: 0 0 0 3px rgba(50, 198, 184, 0.18);
 }
 
-input:disabled {
-	cursor: not-allowed;
-	opacity: 0.65;
-}
-
-.field-note {
-	margin: 0.55rem 0 1rem;
-	font-size: 0.78rem;
-	line-height: 1.45;
-}
-
 .secondary-button {
 	width: 100%;
-	padding: 0.8rem 1rem;
+	padding: 0.65rem 0.9rem;
 	border: 1px solid rgba(255, 255, 255, 0.22);
 	border-radius: 0.85rem;
 	background: transparent;
@@ -174,15 +144,27 @@ input:disabled {
 	background: rgba(255, 255, 255, 0.08);
 }
 
+.secondary-button:disabled {
+	cursor: not-allowed;
+	opacity: 0.45;
+}
+
+.secondary-button + .secondary-button {
+	margin-top: 0.5rem;
+}
+
 .scenario-list {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	min-height: 0;
 	margin-top: auto;
-	padding-top: 2rem;
-	max-height: 25rem;
+	padding-top: 1.1rem;
 	overflow-y: auto;
 }
 
 .scenario-group {
-	margin-bottom: 1rem;
+	margin-bottom: 0.75rem;
 }
 
 .scenario-group:last-child {
@@ -190,7 +172,7 @@ input:disabled {
 }
 
 .scenario-group-label {
-	margin: 0 0 0.45rem;
+	margin: 0 0 0.35rem;
 	color: #8edbd4;
 	font-size: 0.72rem;
 	font-weight: 700;
@@ -199,8 +181,8 @@ input:disabled {
 }
 
 .scenario-list button {
-	margin: 0 0.35rem 0.5rem 0;
-	padding: 0.45rem 0.7rem;
+	margin: 0 0.25rem 0.35rem 0;
+	padding: 0.4rem 0.6rem;
 	border: 1px solid rgba(255, 255, 255, 0.14);
 	border-radius: 999px;
 	background: rgba(255, 255, 255, 0.07);
@@ -217,9 +199,9 @@ input:disabled {
 .conversation-panel {
 	display: grid;
 	grid-template-rows: auto minmax(0, 1fr) auto auto;
-	align-self: center;
-	height: min(46rem, calc(100vh - 4rem));
-	min-height: 38rem;
+	align-self: stretch;
+	height: 100%;
+	min-height: 0;
 	overflow: hidden;
 	border-radius: 1.5rem;
 	background: #fbfdfd;
@@ -373,16 +355,23 @@ textarea {
 @media (max-width: 760px) {
 	.workspace {
 		display: block;
+		height: auto;
+		min-height: 100vh;
 		padding: 0;
 	}
 
-	.demo-panel,
+	body {
+		height: auto;
+		overflow: auto;
+	}
+
+	.sidebar-panel,
 	.conversation-panel {
 		border-radius: 0;
 		box-shadow: none;
 	}
 
-	.demo-panel {
+	.sidebar-panel {
 		min-height: auto;
 		padding: 1.4rem;
 	}

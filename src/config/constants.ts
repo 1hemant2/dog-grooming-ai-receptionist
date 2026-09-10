@@ -38,7 +38,7 @@ export const EXT = {
 				"endedAt",
 				"callerPhone",
 				"contactPhone",
-				"intent",
+				"intents",
 				"outcomeStatus",
 				"outcomeSummary",
 				"callbackRequested",

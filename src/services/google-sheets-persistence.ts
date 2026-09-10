@@ -236,7 +236,7 @@ export class GoogleSheetsCallLog implements CallLog {
 			entry.endedAt,
 			entry.callerPhone ?? "",
 			entry.contactPhone ?? "",
-			entry.intent,
+			entry.intents.join(", "),
 			entry.outcome.status,
 			entry.outcome.summary,
 			String(entry.outcome.callbackRequested),

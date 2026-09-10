@@ -14,8 +14,6 @@ import {
 	type LateArrivalRequest,
 } from "../../src/services/customer-support.js";
 import type {
-	CallLog,
-	CallLogEntry,
 	ContactRecord,
 	Contacts,
 	OwnerNotifier,
@@ -72,19 +70,6 @@ class FakeContacts implements Contacts {
 	}
 }
 
-class FakeCallLog implements CallLog {
-	readonly entries: CallLogEntry[] = [];
-	failure: Error | undefined;
-
-	async append(entry: CallLogEntry): Promise<void> {
-		if (this.failure) {
-			throw this.failure;
-		}
-
-		this.entries.push(entry);
-	}
-}
-
 class FakeOwnerNotifier implements OwnerNotifier {
 	readonly messages: string[] = [];
 	failure: Error | undefined;
@@ -128,21 +113,18 @@ function createAppointment(): Appointment {
 function createService(): {
 	service: CustomerSupportService;
 	contacts: FakeContacts;
-	callLog: FakeCallLog;
 	notifier: FakeOwnerNotifier;
 } {
 	const contacts = new FakeContacts(createContact());
-	const callLog = new FakeCallLog();
 	const notifier = new FakeOwnerNotifier();
 	const service = new CustomerSupportService(
 		configuredBusiness,
 		contacts,
-		callLog,
 		notifier,
 		() => new Date(now),
 	);
 
-	return { service, contacts, callLog, notifier };
+	return { service, contacts, notifier };
 }
 
 function createLateArrivalRequest(overrides: Partial<LateArrivalRequest> = {}): LateArrivalRequest {
@@ -175,22 +157,20 @@ function createComplaintRequest(overrides: Partial<ComplaintRequest> = {}): Comp
 }
 
 test("keeps a short delay, records it, and notifies the owner", async () => {
-	const { service, contacts, callLog, notifier } = createService();
+	const { service, contacts, notifier } = createService();
 
 	const result = await service.handleLateArrival(createLateArrivalRequest());
 
 	assert.equal(result.outcome.status, "completed");
 	assert.equal(result.outcome.callbackRequested, false);
 	assert.match(result.reply, /kept the appointment/);
-	assert.equal(callLog.entries[0]?.intent, "running_late");
-	assert.equal(callLog.entries[0]?.outcome.appointmentId, "appointment-1");
 	assert.equal(contacts.savedContacts.length, 1);
 	assert.match(contacts.savedContacts[0]?.notes ?? "", /10 minutes late/);
 	assert.equal(notifier.messages.length, 1);
 });
 
 test("hands off a delay at the configured threshold", async () => {
-	const { service, callLog, notifier } = createService();
+	const { service, notifier } = createService();
 
 	const result = await service.handleLateArrival(
 		createLateArrivalRequest({ minutesLate: configuredBusiness.lateHandoffMinutes }),
@@ -199,24 +179,22 @@ test("hands off a delay at the configured threshold", async () => {
 	assert.equal(result.outcome.status, "needs_human");
 	assert.equal(result.outcome.callbackRequested, true);
 	assert.match(result.reply, /call you back/);
-	assert.equal(callLog.entries[0]?.outcome.callbackRequested, true);
 	assert.equal(notifier.messages.length, 1);
 });
 
 test("requires the customer and pet to match the stored contact", async () => {
-	const { service, callLog, notifier } = createService();
+	const { service, notifier } = createService();
 
 	await assert.rejects(
 		service.handleLateArrival(createLateArrivalRequest({ customerName: "Unknown Customer" })),
 		CustomerSupportIdentityError,
 	);
 
-	assert.equal(callLog.entries.length, 0);
 	assert.equal(notifier.messages.length, 0);
 });
 
 test("records a refund complaint without making a refund decision", async () => {
-	const { service, callLog, notifier } = createService();
+	const { service, notifier } = createService();
 
 	const result = await service.recordComplaint(
 		createComplaintRequest({
@@ -228,12 +206,11 @@ test("records a refund complaint without making a refund decision", async () => 
 
 	assert.equal(result.outcome.status, "needs_human");
 	assert.match(result.reply, /cannot make refund or charge decisions/);
-	assert.match(callLog.entries[0]?.outcome.summary ?? "", /\$75 charge/);
 	assert.equal(notifier.messages.length, 1);
 });
 
 test("records an ordinary complaint as an owner callback request", async () => {
-	const { service, callLog } = createService();
+	const { service } = createService();
 	const request = createComplaintRequest({
 		category: "other",
 	});
@@ -244,12 +221,11 @@ test("records an ordinary complaint as an owner callback request", async () => {
 
 	assert.equal(result.outcome.status, "needs_human");
 	assert.equal(result.outcome.callbackRequested, true);
-	assert.equal(callLog.entries[0]?.intent, "complaint");
 	assert.match(result.reply, /call you back/);
 });
 
 test("handles a routine operational complaint without a callback", async () => {
-	const { service, callLog, notifier } = createService();
+	const { service, notifier } = createService();
 
 	const result = await service.recordComplaint(
 		createComplaintRequest({
@@ -261,7 +237,6 @@ test("handles a routine operational complaint without a callback", async () => {
 	assert.equal(result.outcome.status, "completed");
 	assert.equal(result.outcome.callbackRequested, false);
 	assert.match(result.reply, /appointment confirmation was resent/);
-	assert.match(callLog.entries[0]?.outcome.summary ?? "", /handled this operational concern/);
 	assert.equal(notifier.messages.length, 0);
 });
 
@@ -337,13 +312,11 @@ test("returns a controlled error when support persistence fails", async () => {
 });
 
 test("returns a controlled error when owner notification fails", async () => {
-	const { service, callLog, notifier } = createService();
+	const { service, notifier } = createService();
 	notifier.failure = new Error("Telegram unavailable");
 
 	await assert.rejects(
 		service.handleLateArrival(createLateArrivalRequest()),
 		CustomerSupportNotificationError,
 	);
-
-	assert.equal(callLog.entries.length, 1);
 });

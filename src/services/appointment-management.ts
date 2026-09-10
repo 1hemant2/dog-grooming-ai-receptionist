@@ -1,12 +1,10 @@
 import { AppointmentSlot, type Appointment } from "../models/appointment.js";
 import type { BusinessConfig } from "../models/business.js";
 import { isValidPhoneNumber, type Pet } from "../models/customer.js";
-import { createConversationOutcome } from "../models/receptionist.js";
 import type {
 	AppointmentCalendar,
 	AvailabilityResult,
 	CalendarAvailability,
-	CallLog,
 	ContactRecord,
 	Contacts,
 	OwnerNotifier,
@@ -103,7 +101,6 @@ export class AppointmentManagementService {
 		private readonly appointmentCalendar: AppointmentCalendar,
 		private readonly availability: CalendarAvailability,
 		private readonly contacts: Contacts,
-		private readonly callLog: CallLog,
 		private readonly ownerNotifier: OwnerNotifier,
 		private readonly clock: () => Date = () => new Date(),
 	) {}
@@ -190,11 +187,9 @@ export class AppointmentManagementService {
 		}
 
 		await this.recordSuccessfulChange(
-			request,
 			currentAppointment.contact,
 			updatedAppointment,
 			`Appointment rescheduled for ${currentAppointment.pet.name} from ${currentAppointment.appointment.startAt} to ${updatedAppointment.startAt}.`,
-			"reschedule_appointment",
 		);
 
 		return updatedAppointment;
@@ -240,11 +235,9 @@ export class AppointmentManagementService {
 		}
 
 		await this.recordSuccessfulChange(
-			request,
 			currentAppointment.contact,
 			currentAppointment.appointment,
 			`Appointment cancelled for ${currentAppointment.pet.name}.`,
-			"cancel_appointment",
 		);
 	}
 
@@ -364,28 +357,17 @@ export class AppointmentManagementService {
 	}
 
 	private async recordSuccessfulChange(
-		request: AppointmentActionRequest,
 		contact: ContactRecord,
 		appointment: Appointment,
 		summary: string,
-		intent: "reschedule_appointment" | "cancel_appointment",
 	): Promise<void> {
 		const endedAt = this.clock().toISOString();
 
 		try {
 			await this.contacts.save({ ...contact, lastContactAt: endedAt });
-			await this.callLog.append({
-				businessId: request.businessId,
-				conversationId: request.conversationId,
-				intent,
-				contactPhone: request.contactPhone,
-				outcome: createConversationOutcome("completed", summary, appointment.id),
-				endedAt,
-				...(request.callerPhone ? { callerPhone: request.callerPhone } : {}),
-			});
 		} catch (error) {
 			throw new AppointmentChangePersistenceError(
-				"Calendar changed, but contact or Call Log persistence failed",
+				"Calendar changed, but contact persistence failed",
 				appointment.id,
 				{ cause: error },
 			);
@@ -395,7 +377,7 @@ export class AppointmentManagementService {
 			await this.ownerNotifier.notify(summary);
 		} catch (error) {
 			throw new OwnerNotificationError(
-				"Calendar changed and was logged, but owner notification failed",
+				"Calendar changed, but owner notification failed",
 				appointment.id,
 				{ cause: error },
 			);

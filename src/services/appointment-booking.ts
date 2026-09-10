@@ -1,10 +1,8 @@
 import { AppointmentSlot, type Appointment } from "../models/appointment.js";
 import type { BusinessConfig, GroomingService, ServiceId } from "../models/business.js";
 import { Customer, Pet, isValidPhoneNumber, PetDetails } from "../models/customer.js";
-import { createConversationOutcome } from "../models/receptionist.js";
 import type {
 	AvailabilityResult,
-	CallLog,
 	CalendarAppointmentWriter,
 	CalendarAvailability,
 	ContactRecord,
@@ -66,7 +64,6 @@ export class AppointmentBookingService {
 		private readonly availability: CalendarAvailability,
 		private readonly calendarWriter: CalendarAppointmentWriter,
 		private readonly contacts: Contacts,
-		private readonly callLog: CallLog,
 		private readonly clock: () => Date = () => new Date(),
 	) {}
 
@@ -139,7 +136,7 @@ export class AppointmentBookingService {
 		};
 	}
 
-	//create the booking and insert the log in contact and call logs
+	// Create the booking and save the contact details.
 	private async createBooking(booking: PreparedBooking): Promise<Appointment> {
 		const availability = await this.availability.findAvailableSlots({
 			businessId: booking.request.businessId,
@@ -180,24 +177,9 @@ export class AppointmentBookingService {
 			const contact = createContactRecord(booking, existingContact, endedAt);
 
 			await this.contacts.save(contact);
-			await this.callLog.append({
-				businessId: booking.request.businessId,
-				conversationId: booking.request.conversationId,
-				intent: "book_appointment",
-				contactPhone: booking.customer.contactPhone,
-				outcome: createConversationOutcome(
-					"completed",
-					`${booking.service.name} appointment booked for ${booking.pet.name}.`,
-					appointment.id,
-				),
-				endedAt,
-				...(booking.request.callerPhone
-					? { callerPhone: booking.request.callerPhone }
-					: {}),
-			});
 		} catch (error) {
 			throw new BookingPersistenceError(
-				"Appointment was created, but contact or Call Log persistence failed",
+				"Appointment was created, but contact persistence failed",
 				appointment.id,
 				{ cause: error },
 			);

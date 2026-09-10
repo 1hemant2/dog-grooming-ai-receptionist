@@ -17,6 +17,8 @@ export async function closeServerGracefully(server: Server): Promise<void> {
 		return;
 	}
 
+	server.closeIdleConnections();
+
 	await new Promise<void>((resolve, reject) => {
 		server.close((error) => {
 			if (error) {

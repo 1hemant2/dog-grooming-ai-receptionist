@@ -14,7 +14,7 @@ const conversationDetails = {
 	callerPhone: "+14155550100",
 };
 
-test("records conversation messages, intent, and outcome", () => {
+test("records conversation messages, intents, and outcome", () => {
 	const conversation = new Conversation(conversationDetails);
 	const outcome = createConversationOutcome(
 		"needs_information",
@@ -22,13 +22,16 @@ test("records conversation messages, intent, and outcome", () => {
 	);
 
 	conversation.addMessage("customer", "I need an appointment.");
+	conversation.recordIntent("pricing");
 	conversation.recordIntent("book_appointment");
+	conversation.recordIntent("complaint");
+	conversation.recordIntent("pricing");
 	conversation.recordOutcome(outcome);
 
 	assert.deepEqual(conversation.messages, [
 		{ author: "customer", text: "I need an appointment." },
 	]);
-	assert.equal(conversation.intent, "book_appointment");
+	assert.deepEqual(conversation.intents, ["pricing", "book_appointment", "complaint"]);
 	assert.equal(conversation.outcome, outcome);
 });
 

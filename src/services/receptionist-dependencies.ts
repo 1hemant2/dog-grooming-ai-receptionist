@@ -90,7 +90,7 @@ export interface Contacts {
 export interface CallLogEntry {
 	businessId: string;
 	conversationId: string;
-	intent: ReceptionistIntent;
+	intents: readonly ReceptionistIntent[];
 	callerPhone?: string;
 	contactPhone?: string;
 	outcome: ConversationOutcome;

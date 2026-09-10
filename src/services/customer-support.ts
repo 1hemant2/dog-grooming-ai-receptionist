@@ -6,12 +6,7 @@ import {
 	type ComplaintCategory,
 	type ConversationOutcome,
 } from "../models/receptionist.js";
-import type {
-	CallLog,
-	ContactRecord,
-	Contacts,
-	OwnerNotifier,
-} from "./receptionist-dependencies.js";
+import type { ContactRecord, Contacts, OwnerNotifier } from "./receptionist-dependencies.js";
 
 export type { ComplaintCategory } from "../models/receptionist.js";
 
@@ -61,7 +56,6 @@ export class CustomerSupportService {
 	constructor(
 		private readonly business: BusinessConfig,
 		private readonly contacts: Contacts,
-		private readonly callLog: CallLog,
 		private readonly ownerNotifier: OwnerNotifier,
 		private readonly clock: () => Date = () => new Date(),
 	) {}
@@ -81,7 +75,7 @@ export class CustomerSupportService {
 			? `Because the delay is ${request.minutesLate} minutes, I have sent the details to the owner for review. They will call you back.`
 			: `I have kept the appointment and notified the owner that you expect to arrive ${request.minutesLate} minutes late.`;
 
-		await this.recordSupportEvent(request, contact, outcome, "running_late", summary, true);
+		await this.recordSupportEvent(request, contact, summary, true);
 
 		return { reply, outcome };
 	}
@@ -102,14 +96,7 @@ export class CustomerSupportService {
 		);
 		const reply = createComplaintReply(request.category, request.resolution);
 
-		await this.recordSupportEvent(
-			request,
-			contact,
-			outcome,
-			"complaint",
-			summary,
-			!handledByAgent,
-		);
+		await this.recordSupportEvent(request, contact, summary, !handledByAgent);
 
 		return { reply, outcome };
 	}
@@ -173,12 +160,10 @@ export class CustomerSupportService {
 		return contact;
 	}
 
-	// record customer support events in contact and call logs
+	// Record customer support details in the contact record.
 	private async recordSupportEvent(
 		request: CustomerSupportRequest,
 		contact: ContactRecord,
-		outcome: ConversationOutcome,
-		intent: "running_late" | "complaint",
 		summary: string,
 		notifyOwner: boolean,
 	): Promise<void> {
@@ -191,19 +176,13 @@ export class CustomerSupportService {
 				lastContactAt: endedAt,
 				notes: appendNote(contact.notes, contactNote),
 			});
-			await this.callLog.append({
-				businessId: request.businessId,
-				conversationId: request.conversationId,
-				intent,
-				contactPhone: request.contactPhone,
-				outcome,
-				endedAt,
-				...(request.callerPhone ? { callerPhone: request.callerPhone } : {}),
-			});
 		} catch (error) {
-			throw new CustomerSupportPersistenceError("Customer support event could not be saved", {
-				cause: error,
-			});
+			throw new CustomerSupportPersistenceError(
+				"Customer support contact could not be saved",
+				{
+					cause: error,
+				},
+			);
 		}
 
 		if (!notifyOwner) {

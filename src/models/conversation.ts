@@ -38,7 +38,7 @@ export class Conversation {
 	private readonly messageHistory: ConversationMessage[] = [];
 	private callerPhoneValue: string | undefined;
 	private contactPhoneValue: string | undefined;
-	private intentValue: ReceptionistIntent = "unknown";
+	private readonly intentHistory: ReceptionistIntent[] = [];
 	private outcomeValue: ConversationOutcome | undefined;
 	private statusValue: ConversationStatus = "active";
 
@@ -73,8 +73,8 @@ export class Conversation {
 		return this.messageHistory;
 	}
 
-	get intent(): ReceptionistIntent {
-		return this.intentValue;
+	get intents(): readonly ReceptionistIntent[] {
+		return this.intentHistory;
 	}
 
 	get outcome(): ConversationOutcome | undefined {
@@ -122,7 +122,10 @@ export class Conversation {
 
 	recordIntent(intent: ReceptionistIntent): void {
 		this.requireActive("record an intent for");
-		this.intentValue = intent;
+
+		if (!this.intentHistory.includes(intent)) {
+			this.intentHistory.push(intent);
+		}
 	}
 
 	recordOutcome(outcome: ConversationOutcome): void {
@@ -150,6 +153,7 @@ export class ConversationStateError extends Error {}
 
 export class InMemoryConversationStore {
 	private readonly conversations = new Map<string, Conversation>();
+	private readonly endedConversationIds = new Set<string>();
 
 	// Start a conversation for a new ID, or append to the existing conversation.
 	receiveMessage(input: ReceiveMessageInput): string {
@@ -157,6 +161,10 @@ export class InMemoryConversationStore {
 
 		if (!conversationId) {
 			conversationId = randomUUID();
+		}
+
+		if (this.endedConversationIds.has(conversationId)) {
+			throw new ConversationNotFoundError("Conversation not found");
 		}
 
 		if (this.conversations.has(conversationId)) {
@@ -184,6 +192,7 @@ export class InMemoryConversationStore {
 		const conversation = this.getConversation(input);
 		conversation.end();
 		this.conversations.delete(input.conversationId);
+		this.endedConversationIds.add(input.conversationId);
 	}
 
 	getConversation(input: ConversationLookupInput): Conversation {

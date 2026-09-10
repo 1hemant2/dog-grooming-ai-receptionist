@@ -18,8 +18,6 @@ import type {
 	AppointmentCalendar,
 	AvailabilityRequest,
 	AvailabilityResult,
-	CallLog,
-	CallLogEntry,
 	CalendarAvailability,
 	ContactRecord,
 	Contacts,
@@ -147,14 +145,6 @@ class FakeContacts implements Contacts {
 	}
 }
 
-class FakeCallLog implements CallLog {
-	readonly entries: CallLogEntry[] = [];
-
-	async append(entry: CallLogEntry): Promise<void> {
-		this.entries.push(entry);
-	}
-}
-
 class FakeOwnerNotifier implements OwnerNotifier {
 	readonly messages: string[] = [];
 	failure: Error | undefined;
@@ -205,25 +195,22 @@ function createService(): {
 	calendar: FakeAppointmentCalendar;
 	availability: FakeAvailability;
 	contacts: FakeContacts;
-	callLog: FakeCallLog;
 	notifier: FakeOwnerNotifier;
 } {
 	const calendar = new FakeAppointmentCalendar();
 	const availability = new FakeAvailability();
 	const contacts = new FakeContacts(createContact());
-	const callLog = new FakeCallLog();
 	const notifier = new FakeOwnerNotifier();
 	const service = new AppointmentManagementService(
 		configuredBusiness,
 		calendar,
 		availability,
 		contacts,
-		callLog,
 		notifier,
 		() => new Date(now),
 	);
 
-	return { service, calendar, availability, contacts, callLog, notifier };
+	return { service, calendar, availability, contacts, notifier };
 }
 
 function createRescheduleRequest(
@@ -301,7 +288,7 @@ test("reports when no appointment matches the confirmed identity", async () => {
 });
 
 test("reschedules an appointment after a final availability check", async () => {
-	const { service, calendar, availability, contacts, callLog, notifier } = createService();
+	const { service, calendar, availability, contacts, notifier } = createService();
 	calendar.appointments = [createAppointment()];
 
 	const updatedAppointment = await service.reschedule(createRescheduleRequest());
@@ -311,13 +298,11 @@ test("reschedules an appointment after a final availability check", async () => 
 	assert.equal(calendar.rescheduleRequests.length, 1);
 	assert.equal(calendar.rescheduleRequests[0]?.appointmentId, "appointment-1");
 	assert.equal(contacts.savedContacts.length, 1);
-	assert.equal(callLog.entries[0]?.intent, "reschedule_appointment");
-	assert.equal(callLog.entries[0]?.outcome.appointmentId, "appointment-1");
 	assert.equal(notifier.messages.length, 1);
 });
 
 test("processes a duplicate reschedule request once", async () => {
-	const { service, calendar, availability, contacts, callLog, notifier } = createService();
+	const { service, calendar, availability, contacts, notifier } = createService();
 	calendar.appointments = [createAppointment()];
 	const request = createRescheduleRequest();
 
@@ -328,7 +313,6 @@ test("processes a duplicate reschedule request once", async () => {
 	assert.equal(availability.requests.length, 1);
 	assert.equal(calendar.rescheduleRequests.length, 1);
 	assert.equal(contacts.savedContacts.length, 1);
-	assert.equal(callLog.entries.length, 1);
 	assert.equal(notifier.messages.length, 1);
 });
 
@@ -376,14 +360,13 @@ test("does not reschedule when the new slot is no longer available", async () =>
 });
 
 test("returns a controlled error when Calendar rescheduling fails", async () => {
-	const { service, calendar, notifier, callLog } = createService();
+	const { service, calendar, notifier } = createService();
 	calendar.appointments = [createAppointment()];
 	calendar.rescheduleFailure = new Error("Calendar is unavailable");
 
 	await assert.rejects(service.reschedule(createRescheduleRequest()), AppointmentCalendarError);
 
 	assert.equal(notifier.messages.length, 0);
-	assert.equal(callLog.entries.length, 0);
 });
 
 test("retains the appointment ID when persistence fails after rescheduling", async () => {
@@ -417,21 +400,19 @@ test("requires confirmation before cancellation", async () => {
 	assert.equal(calendar.cancelRequests.length, 0);
 });
 
-test("cancels an appointment, logs it, and notifies the owner", async () => {
-	const { service, calendar, contacts, callLog, notifier } = createService();
+test("cancels an appointment and notifies the owner", async () => {
+	const { service, calendar, contacts, notifier } = createService();
 	calendar.appointments = [createAppointment()];
 
 	await service.cancel(createRescheduleRequest());
 
 	assert.deepEqual(calendar.cancelRequests, ["appointment-1"]);
 	assert.equal(contacts.savedContacts.length, 1);
-	assert.equal(callLog.entries[0]?.intent, "cancel_appointment");
-	assert.equal(callLog.entries[0]?.outcome.appointmentId, "appointment-1");
 	assert.equal(notifier.messages.length, 1);
 });
 
 test("processes a duplicate cancellation request once", async () => {
-	const { service, calendar, contacts, callLog, notifier } = createService();
+	const { service, calendar, contacts, notifier } = createService();
 	calendar.appointments = [createAppointment()];
 	const request = createRescheduleRequest();
 
@@ -441,7 +422,6 @@ test("processes a duplicate cancellation request once", async () => {
 	assert.equal(calendar.findRequests.length, 1);
 	assert.equal(calendar.cancelRequests.length, 1);
 	assert.equal(contacts.savedContacts.length, 1);
-	assert.equal(callLog.entries.length, 1);
 	assert.equal(notifier.messages.length, 1);
 });
 
@@ -462,14 +442,13 @@ test("retains the appointment ID when owner notification fails", async () => {
 });
 
 test("returns a controlled error when Calendar cancellation fails", async () => {
-	const { service, calendar, notifier, callLog } = createService();
+	const { service, calendar, notifier } = createService();
 	calendar.appointments = [createAppointment()];
 	calendar.cancelFailure = new Error("Calendar is unavailable");
 
 	await assert.rejects(service.cancel(createRescheduleRequest()), AppointmentCalendarError);
 
 	assert.equal(notifier.messages.length, 0);
-	assert.equal(callLog.entries.length, 0);
 });
 
 test("returns a controlled error when Calendar lookup fails", async () => {

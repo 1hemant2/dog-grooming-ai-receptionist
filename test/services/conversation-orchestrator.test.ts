@@ -14,7 +14,11 @@ import {
 	ConversationOrchestrator,
 	type ConversationOrchestratorDependencies,
 } from "../../src/services/conversation-orchestrator.js";
-import type { MessageInterpreter } from "../../src/services/receptionist-dependencies.js";
+import type {
+	CallLog,
+	CallLogEntry,
+	MessageInterpreter,
+} from "../../src/services/receptionist-dependencies.js";
 import type { InterpretedMessage } from "../../src/models/receptionist.js";
 
 const business = findBusinessConfig("maple-street-dog-grooming");
@@ -34,6 +38,14 @@ class FakeInterpreter implements MessageInterpreter {
 	}
 }
 
+class FakeCallLog implements CallLog {
+	readonly entries: CallLogEntry[] = [];
+
+	async append(entry: CallLogEntry): Promise<void> {
+		this.entries.push(entry);
+	}
+}
+
 function createDependencies(
 	booking: Pick<AppointmentBookingService, "book"> = {
 		async book(): Promise<Appointment> {
@@ -48,8 +60,10 @@ function createDependencies(
 			});
 		},
 	},
+	callLog: CallLog = new FakeCallLog(),
 ): ConversationOrchestratorDependencies {
 	return {
+		callLog,
 		information: new BusinessInformationService(configuredBusiness),
 		booking,
 		management: {
@@ -96,6 +110,42 @@ test("routes interpreted informational requests to deterministic business logic"
 	assert.equal(result.outcome.status, "answered");
 	assert.match(result.reply, /9:00 AM to 5:00 PM/);
 	assert.equal(conversation.messages.at(-1)?.author, "receptionist");
+});
+
+test("writes one final Call Log entry when the conversation ends", async () => {
+	const callLog = new FakeCallLog();
+	const orchestrator = new ConversationOrchestrator(
+		configuredBusiness,
+		new FakeInterpreter({ intent: "business_hours" }),
+		createDependencies(undefined, callLog),
+	);
+	const conversation = createConversation();
+
+	await orchestrator.handleMessage("What time do you open?", conversation);
+	await orchestrator.endConversation(conversation);
+
+	assert.equal(callLog.entries.length, 1);
+	assert.equal(callLog.entries[0]?.conversationId, conversation.id);
+	assert.deepEqual(callLog.entries[0]?.intents, ["business_hours"]);
+	assert.equal(callLog.entries[0]?.outcome.status, "answered");
+});
+
+test("writes all distinct conversation intents in their first-seen order", async () => {
+	const callLog = new FakeCallLog();
+	const orchestrator = new ConversationOrchestrator(
+		configuredBusiness,
+		new FakeInterpreter({ intent: "business_hours" }),
+		createDependencies(undefined, callLog),
+	);
+	const conversation = createConversation();
+	conversation.recordIntent("pricing");
+	conversation.recordIntent("book_appointment");
+	conversation.recordIntent("complaint");
+	conversation.recordIntent("pricing");
+
+	await orchestrator.endConversation(conversation);
+
+	assert.deepEqual(callLog.entries[0]?.intents, ["pricing", "book_appointment", "complaint"]);
 });
 
 test("handles interpreter failure without calling an application service", async () => {

@@ -1,6 +1,9 @@
 import { Router } from "express";
 
-import { createReceiveMessageController } from "../controllers/conversation-controller.js";
+import {
+	createEndConversationController,
+	createReceiveMessageController,
+} from "../controllers/conversation-controller.js";
 import type { InMemoryConversationStore } from "../models/conversation.js";
 import type { ConversationMessageHandler } from "../services/conversation-orchestrator.js";
 
@@ -10,8 +13,10 @@ export function createConversationRouter(
 ): Router {
 	const router = Router();
 	const receiveMessage = createReceiveMessageController(conversationStore, resolveOrchestrator);
+	const endConversation = createEndConversationController(conversationStore, resolveOrchestrator);
 
 	router.post("/messages", receiveMessage);
+	router.post("/:conversationId/end", endConversation);
 
 	return router;
 }

@@ -6,6 +6,7 @@ import {
 	createConversationOutcome,
 	type ConversationOutcome,
 	type InterpretedMessage,
+	type ReceptionistIntent,
 } from "../models/receptionist.js";
 import { localDateTimeToDate } from "./calendar-time.js";
 import {
@@ -31,7 +32,7 @@ import type {
 	CustomerSupportResult,
 } from "./customer-support.js";
 import { AppointmentSlot } from "../models/appointment.js";
-import type { MessageInterpreter } from "./receptionist-dependencies.js";
+import type { CallLog, MessageInterpreter } from "./receptionist-dependencies.js";
 
 export interface ConversationResponse {
 	reply: string;
@@ -40,9 +41,11 @@ export interface ConversationResponse {
 
 export interface ConversationMessageHandler {
 	handleMessage(message: string, conversation: Conversation): Promise<ConversationResponse>;
+	endConversation(conversation: Conversation): Promise<void>;
 }
 
 export interface ConversationOrchestratorDependencies {
+	callLog: CallLog;
 	information: Pick<
 		BusinessInformationService,
 		| "answerServices"
@@ -72,7 +75,33 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 		private readonly business: BusinessConfig,
 		private readonly interpreter: MessageInterpreter,
 		private readonly dependencies: ConversationOrchestratorDependencies,
+		private readonly clock: () => Date = () => new Date(),
 	) {}
+
+	async endConversation(conversation: Conversation): Promise<void> {
+		if (conversation.businessId !== this.business.id) {
+			throw new Error("Conversation does not belong to the configured business");
+		}
+
+		const outcome =
+			conversation.outcome ??
+			createConversationOutcome(
+				"needs_information",
+				"The conversation ended before the request was completed.",
+			);
+		const intents: readonly ReceptionistIntent[] =
+			conversation.intents.length > 0 ? conversation.intents : ["unknown"];
+
+		await this.dependencies.callLog.append({
+			businessId: conversation.businessId,
+			conversationId: conversation.id,
+			intents,
+			outcome,
+			endedAt: this.clock().toISOString(),
+			...(conversation.callerPhone ? { callerPhone: conversation.callerPhone } : {}),
+			...(conversation.contactPhone ? { contactPhone: conversation.contactPhone } : {}),
+		});
+	}
 
 	async handleMessage(
 		message: string,
@@ -131,7 +160,7 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 			console.error("Conversation action failed.", {
 				businessId: conversation.businessId,
 				conversationId: conversation.id,
-				intent: conversation.intent,
+				intents: conversation.intents,
 				outcomeStatus: "needs_human",
 				...(appointmentId ? { appointmentId } : {}),
 				errorName: error instanceof Error ? error.constructor.name : "UnknownError",

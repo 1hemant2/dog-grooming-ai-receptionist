@@ -41,6 +41,7 @@ Build a text-based AI receptionist for Maple Street Dog Grooming. It should hand
 - The UI sends the business ID as trusted request metadata, not as customer-written message content.
 - After the first response, the UI stores the returned `conversationId` and sends it with later messages.
 - The UI displays the conversation replies and request status so the main Phase 1 flows can be demonstrated manually.
+- The UI provides an End conversation action. Ending a conversation saves one final Call Log row and then removes the in-memory conversation state.
 - Pressing Enter sends the message. Shift+Enter inserts a new line in the message box.
 - The UI does not contain business rules; it only collects input, calls the API, and displays results.
 
@@ -80,8 +81,12 @@ Build a text-based AI receptionist for Maple Street Dog Grooming. It should hand
 6. Before changing Calendar, confirm the customer, pet, service, date, and time.
 7. Check Calendar again immediately before writing to avoid a stale availability result.
 8. Perform the approved Calendar action once and verify that it succeeded.
-9. Update the contact and add a call-log entry in the business's Sheets records.
+9. Update the contact record in the business's Sheets records as needed.
 10. Tell the customer what happened and ask whether they need anything else.
+
+When the customer ends the conversation, save all handled intents, the final outcome, and conversation
+metadata to one Call Log row before deleting the in-memory conversation. If the Call Log write fails,
+preserve the conversation so it can be retried or handed to a human.
 
 If a required lookup fails, the receptionist must not guess. It should explain that it cannot complete the request and preserve enough context for a human to continue.
 
@@ -175,4 +180,4 @@ Keep one row per confirmed `contactPhone` with the customer name, pet name, bree
 
 ### Call Log
 
-Keep one row per conversation with the timestamp, conversation ID, `callerPhone` when available, confirmed `contactPhone` when collected, intent, outcome, appointment identifier, and human-handoff summary when applicable.
+Keep one row per conversation with the timestamp, conversation ID, `callerPhone` when available, confirmed `contactPhone` when collected, all handled intents in conversation order, the final outcome, appointment identifier, and human-handoff summary when applicable.

@@ -48,7 +48,7 @@ The `Call Log` tab uses these columns:
 | `endedAt`           | Outcome timestamp in ISO format                                     |
 | `callerPhone`       | Optional channel-provided caller number                             |
 | `contactPhone`      | Customer-confirmed contact number                                   |
-| `intent`            | Interpreted customer request                                        |
+| `intents`           | All handled requests in first-seen order, comma-separated           |
 | `outcomeStatus`     | Answered, completed, unavailable, needs-information, or needs-human |
 | `outcomeSummary`    | Context needed to understand or continue the request                |
 | `callbackRequested` | Whether owner follow-up is required                                 |
@@ -63,8 +63,8 @@ npm run dev
 ```
 
 The UI keeps the server-issued conversation ID in browser session storage. The optional caller
-phone is locked after it is first provided. Use **Start new conversation** between unrelated
-scenarios so one customer's state does not affect another.
+phone is locked after it is first provided. Use **End conversation** after each scenario to save one
+final Call Log row, then use **Start new conversation** between unrelated scenarios.
 
 ## Scenario checklist
 
@@ -82,7 +82,8 @@ Start a new conversation for each prompt:
 - Vaccination: `Does Milo need current rabies vaccination proof?`
 
 Verify that answers use Maple Street configuration, Sunday is closed, pricing is presented as a
-starting estimate, and breed alone does not cause rejection.
+starting estimate, and breed alone does not cause rejection. End the conversation and verify that
+the final outcome is recorded in `Call Log`.
 
 ### Book an appointment
 
@@ -91,8 +92,9 @@ Use a new conversation and an open date from the Calendar. Send:
 `My name is Jordan Lee. I confirm +14155550102 as my contact number. My dog Daisy is 30 lb, has current rabies vaccination, and needs a Bath at [OPEN DATE AND TIME]. I confirm the booking details.`
 
 Verify that the browser displays `completed` and an appointment ID, Calendar contains one new
-event, `Contacts` contains Jordan and Daisy, and `Call Log` records the completed booking. Sending
-the same confirmed message again must not create another event.
+event, and `Contacts` contains Jordan and Daisy. End the conversation and verify that `Call Log`
+records one completed booking. Sending the same confirmed message again must not create another
+event.
 
 ### Reschedule an appointment
 
@@ -102,8 +104,8 @@ Use the seeded Alex and Milo record:
 2. Request the occupied Calendar time and verify that no Calendar change occurs.
 3. Request an open Calendar time and explicitly confirm the move.
 
-Verify that Calendar moves the appointment once, `Call Log` records the result, and Telegram
-receives the owner notification.
+Verify that Calendar moves the appointment once and Telegram receives the owner notification. End
+the conversation and verify that `Call Log` records the result.
 
 ### Cancel an appointment
 
@@ -111,8 +113,8 @@ Reset the demo appointment in Calendar, start a new conversation, and send:
 
 `I am Alex Morgan. I confirm +14155550100 as my contact number. Please cancel Milo's appointment. I confirm the cancellation.`
 
-Verify that Calendar cancels the event, `Call Log` records the cancellation, and Telegram receives
-the owner notification.
+Verify that Calendar cancels the event and Telegram receives the owner notification. End the
+conversation and verify that `Call Log` records the cancellation.
 
 ### Running late
 
@@ -123,6 +125,8 @@ Reset the demo appointment in Calendar before this scenario.
   automatic schedule decision.
 
 Example: `I am Alex Morgan and confirm +14155550100 as my contact number. Milo and I will be 10 minutes late for his appointment.`
+
+End each conversation and verify that the outcome is recorded in `Call Log`.
 
 ### Complaints and handoff
 
@@ -135,7 +139,8 @@ Use a new conversation for each case:
 
 Verify that refund, safety, and unresolved cases request human follow-up without promising fault,
 refunds, or compensation. The resolved operational concern may be recorded as completed when the
-interpreter extracts the stated resolution.
+interpreter extracts the stated resolution. End each conversation and verify the final outcome in
+`Call Log`.
 
 ## Final verification
 

@@ -192,7 +192,7 @@ test("records completed or handed-off conversations in the Call Log tab", async 
 	const entry: CallLogEntry = {
 		businessId: business.id,
 		conversationId: "conversation-123",
-		intent: "complaint",
+		intents: ["pricing", "book_appointment", "complaint"],
 		callerPhone: "+14155550100",
 		contactPhone: "+14155550100",
 		outcome: createConversationOutcome(
@@ -211,7 +211,7 @@ test("records completed or handed-off conversations in the Call Log tab", async 
 		"endedAt",
 		"callerPhone",
 		"contactPhone",
-		"intent",
+		"intents",
 		"outcomeStatus",
 		"outcomeSummary",
 		"callbackRequested",
@@ -223,7 +223,7 @@ test("records completed or handed-off conversations in the Call Log tab", async 
 		"2026-09-09T12:00:00.000Z",
 		"+14155550100",
 		"+14155550100",
-		"complaint",
+		"pricing, book_appointment, complaint",
 		"needs_human",
 		"Owner callback requested for a complaint.",
 		"true",

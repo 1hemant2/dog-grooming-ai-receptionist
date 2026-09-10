@@ -72,6 +72,10 @@ returned conversation ID with later messages. Phase 1 state is in memory and is 
 `callerPhone` is optional channel metadata. Customer-specific operations separately collect and
 confirm the preferred contact phone before reading or changing appointment data.
 
+End a conversation with `POST /conversations/:conversationId/end`. This writes one final Call Log
+row containing all handled intents and the final outcome, then removes the conversation from memory
+only after the Sheets write succeeds.
+
 ## Architecture
 
 - `src/models/` owns validated domain state.

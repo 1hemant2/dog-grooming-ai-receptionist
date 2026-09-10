@@ -89,6 +89,50 @@ export function createReceiveMessageController(
 	};
 }
 
+export function createEndConversationController(
+	conversationStore: InMemoryConversationStore,
+	resolveOrchestrator?: (businessId: string) => ConversationMessageHandler | undefined,
+): RequestHandler {
+	return async function endConversation(request: Request, response: Response): Promise<void> {
+		try {
+			const businessId = readBusinessId(request);
+			const businessConfig = findBusinessConfig(businessId);
+
+			if (!businessConfig) {
+				response.status(404).json({ error: "Business not found" });
+				return;
+			}
+
+			const conversationId = request.params.conversationId;
+			if (typeof conversationId !== "string" || !isValidConversationId(conversationId)) {
+				throw new InvalidRequestError(400, "conversationId is invalid");
+			}
+
+			const callerPhone = readEndConversationCallerPhone(request);
+			const lookupInput: ConversationLookupInput = { businessId, conversationId };
+
+			if (callerPhone !== undefined) {
+				lookupInput.callerPhone = callerPhone;
+			}
+
+			const conversation = conversationStore.getConversation(lookupInput);
+			const orchestrator = resolveOrchestrator?.(businessId);
+
+			if (!orchestrator) {
+				response.status(503).json({ error: "Conversation services are unavailable" });
+				return;
+			}
+
+			await orchestrator.endConversation(conversation);
+			conversationStore.endConversation(lookupInput);
+
+			response.status(200).json({ conversationId, status: "ended" });
+		} catch (error) {
+			handleConversationError(error, response);
+		}
+	};
+}
+
 function readBusinessId(request: Request): string {
 	const businessId = request.get("X-Business-Id");
 
@@ -140,6 +184,23 @@ function readConversationBody(request: Request): ConversationRequestBody {
 	return conversationBody;
 }
 
+function readEndConversationCallerPhone(request: Request): string | undefined {
+	if (request.body === undefined) {
+		return undefined;
+	}
+
+	if (!isObject(request.body)) {
+		throw new InvalidRequestError(400, "Request body must be a JSON object");
+	}
+
+	const callerPhone = readOptionalString(request.body, "callerPhone");
+	if (callerPhone !== undefined && !isValidPhoneNumber(callerPhone)) {
+		throw new InvalidRequestError(400, "callerPhone must use E.164 format");
+	}
+
+	return callerPhone;
+}
+
 function readRequiredString(body: Record<string, unknown>, field: string): string {
 	const value = body[field];
 
@@ -186,8 +247,10 @@ function handleConversationError(error: unknown, response: Response): void {
 		return;
 	}
 
-	console.error("Conversation request failed.", {
+	const errorMessage = error instanceof Error ? error.message : String(error);
+	console.error(`Conversation request failed: ${errorMessage}`, {
 		errorName: error instanceof Error ? error.constructor.name : "UnknownError",
+		errorMessage,
 	});
 	response.status(500).json({ error: "Internal server error" });
 }

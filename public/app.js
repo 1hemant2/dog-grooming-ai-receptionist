@@ -2,15 +2,14 @@
 
 const BUSINESS_ID = "maple-street-dog-grooming";
 const CONVERSATION_ID_KEY = "mapleStreetConversationId";
-const CALLER_PHONE_KEY = "mapleStreetCallerPhone";
 
-class ReceptionistDemo {
+class ReceptionistApp {
 	constructor() {
 		this.form = document.querySelector("#message-form");
 		this.messageInput = document.querySelector("#message");
-		this.callerPhoneInput = document.querySelector("#caller-phone");
 		this.sendButton = document.querySelector("#send-message");
 		this.newConversationButton = document.querySelector("#new-conversation");
+		this.endConversationButton = document.querySelector("#end-conversation");
 		this.scenarioList = document.querySelector("#scenario-list");
 		this.conversationLog = document.querySelector("#conversation-log");
 		this.status = document.querySelector("#request-status");
@@ -20,20 +19,15 @@ class ReceptionistDemo {
 		this.form.addEventListener("submit", this.sendMessage.bind(this));
 		this.messageInput.addEventListener("keydown", this.handleMessageKeydown.bind(this));
 		this.newConversationButton.addEventListener("click", this.startNewConversation.bind(this));
+		this.endConversationButton.addEventListener("click", this.endConversation.bind(this));
 		this.scenarioList.addEventListener("click", this.selectScenario.bind(this));
 
 		this.restoreSession();
 	}
 
 	restoreSession() {
-		const callerPhone = sessionStorage.getItem(CALLER_PHONE_KEY);
-
-		if (callerPhone) {
-			this.callerPhoneInput.value = callerPhone;
-		}
-
 		if (this.conversationId) {
-			this.callerPhoneInput.disabled = true;
+			this.endConversationButton.disabled = false;
 			this.conversationIdLabel.textContent = `Conversation: ${this.conversationId}`;
 		}
 	}
@@ -54,7 +48,6 @@ class ReceptionistDemo {
 		event.preventDefault();
 
 		const message = this.messageInput.value.trim();
-		const callerPhone = this.callerPhoneInput.value.trim();
 
 		if (!message) {
 			return;
@@ -73,7 +66,6 @@ class ReceptionistDemo {
 				},
 				body: JSON.stringify({
 					message,
-					...(callerPhone ? { callerPhone } : {}),
 					...(this.conversationId ? { conversationId: this.conversationId } : {}),
 				}),
 			});
@@ -83,7 +75,7 @@ class ReceptionistDemo {
 				throw new Error(result.error || "The receptionist could not process the request.");
 			}
 
-			this.saveSession(result.conversationId, callerPhone);
+			this.saveSession(result.conversationId);
 			this.setStatus(result.status);
 			this.addMessage(
 				"Receptionist",
@@ -104,24 +96,17 @@ class ReceptionistDemo {
 		}
 	}
 
-	saveSession(conversationId, callerPhone) {
+	saveSession(conversationId) {
 		this.conversationId = conversationId;
 		sessionStorage.setItem(CONVERSATION_ID_KEY, conversationId);
 		this.conversationIdLabel.textContent = `Conversation: ${conversationId}`;
-
-		if (callerPhone) {
-			sessionStorage.setItem(CALLER_PHONE_KEY, callerPhone);
-		}
-
-		this.callerPhoneInput.disabled = Boolean(callerPhone);
+		this.endConversationButton.disabled = false;
 	}
 
 	startNewConversation() {
 		this.conversationId = null;
 		sessionStorage.removeItem(CONVERSATION_ID_KEY);
-		sessionStorage.removeItem(CALLER_PHONE_KEY);
-		this.callerPhoneInput.value = "";
-		this.callerPhoneInput.disabled = false;
+		this.endConversationButton.disabled = true;
 		this.conversationIdLabel.textContent = "A conversation ID will appear here.";
 		this.status.textContent = "Ready";
 		this.status.dataset.status = "ready";
@@ -132,6 +117,55 @@ class ReceptionistDemo {
 			"receptionist-message",
 		);
 		this.messageInput.focus();
+	}
+
+	async endConversation() {
+		if (!this.conversationId || this.sendButton.disabled) {
+			return;
+		}
+
+		const conversationId = this.conversationId;
+		this.setLoading(true);
+
+		try {
+			const response = await fetch(
+				`/conversations/${encodeURIComponent(conversationId)}/end`,
+				{
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						"X-Business-Id": BUSINESS_ID,
+					},
+					body: JSON.stringify({}),
+				},
+			);
+			const result = await response.json();
+
+			if (!response.ok) {
+				throw new Error(result.error || "The conversation could not be ended.");
+			}
+
+			this.addMessage(
+				"System",
+				"Conversation ended and saved to the Call Log.",
+				"system-message",
+			);
+			this.conversationId = null;
+			sessionStorage.removeItem(CONVERSATION_ID_KEY);
+			this.endConversationButton.disabled = true;
+			this.conversationIdLabel.textContent = "Conversation ended.";
+			this.setStatus(result.status);
+		} catch (error) {
+			this.setStatus("error");
+			this.addMessage(
+				"System",
+				error instanceof Error ? error.message : "The conversation could not be ended.",
+				"system-message",
+			);
+		} finally {
+			this.setLoading(false);
+			this.messageInput.focus();
+		}
 	}
 
 	selectScenario(event) {
@@ -172,6 +206,7 @@ class ReceptionistDemo {
 	setLoading(isLoading) {
 		this.sendButton.disabled = isLoading;
 		this.messageInput.disabled = isLoading;
+		this.endConversationButton.disabled = isLoading || !this.conversationId;
 		this.form.setAttribute("aria-busy", String(isLoading));
 
 		if (isLoading) {
@@ -186,4 +221,4 @@ class ReceptionistDemo {
 	}
 }
 
-new ReceptionistDemo();
+new ReceptionistApp();
