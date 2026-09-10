@@ -1,5 +1,6 @@
 import { DateTime } from "luxon";
 
+import { APPLICATION_PATTERNS } from "../config/constants.js";
 import type { BusinessConfig, GroomingService } from "../models/business.js";
 import type { Conversation } from "../models/conversation.js";
 import type {
@@ -36,9 +37,23 @@ const MONTH_NUMBERS: Record<string, number> = {
 	dec: 12,
 };
 
+const WEEKDAY_NUMBERS: Record<string, number> = {
+	monday: 1,
+	tuesday: 2,
+	wednesday: 3,
+	thursday: 4,
+	friday: 5,
+	saturday: 6,
+	sunday: 7,
+};
+
 const MONTH_PATTERN = Object.keys(MONTH_NUMBERS).join("|");
 const SERVICE_DETAILS_PATTERN =
 	/\b(include|includes|included|including|contain|contains|details?|explain|come with|comes with)\b|\bwhat(?:'s| is| are)\b.*\bin\b/i;
+
+export function isConversationResetRequest(message: string): boolean {
+	return APPLICATION_PATTERNS.conversationReset.test(normalizeWords(message));
+}
 
 export function interpretExpectedAnswer(
 	message: string,
@@ -98,12 +113,30 @@ export function interpretExpectedAnswer(
 				business.timezone,
 				currentLocalDate,
 			);
-			if (requestedDate) return { intent: activeIntent, requestedDate };
+			if (requestedDate) {
+				const requestedTime = extractRequestedTime(message, true);
+				return {
+					intent: activeIntent,
+					requestedDate,
+					...(requestedTime ? { requestedTime } : {}),
+				};
+			}
 			return isContinuationAcknowledgement(message) ? { intent: activeIntent } : undefined;
 		}
 		case "requested_time": {
 			const requestedTime = extractRequestedTime(message, true);
-			return requestedTime ? { intent: activeIntent, requestedTime } : undefined;
+			if (!requestedTime) return undefined;
+
+			const requestedDate = extractRequestedDate(
+				message,
+				business.timezone,
+				currentLocalDate,
+			);
+			return {
+				intent: activeIntent,
+				requestedTime,
+				...(requestedDate ? { requestedDate } : {}),
+			};
 		}
 		case "appointment_confirmation": {
 			const confirmation = extractConfirmation(message);
@@ -270,6 +303,9 @@ function extractRequestedDate(
 	timezone: string,
 	currentLocalDate: DateTime,
 ): string | undefined {
+	const relativeDate = extractRelativeDate(message, currentLocalDate);
+	if (relativeDate) return relativeDate;
+
 	const isoMatch = message.match(/\b([0-9]{4})-([0-9]{2})-([0-9]{2})\b/);
 	if (isoMatch?.[1] && isoMatch[2] && isoMatch[3]) {
 		return createRequestedDate(
@@ -306,6 +342,38 @@ function extractRequestedDate(
 	}
 
 	return requestedDate?.toISODate() ?? undefined;
+}
+
+function extractRelativeDate(message: string, currentLocalDate: DateTime): string | undefined {
+	const normalizedMessage = normalizeWords(message);
+	const relativeDateMatch = normalizedMessage.match(
+		/\b(day after tomorrow|today|tomorrow|tommorow|tomorow|tommorrow|tommrow|tmrw|tmr)\b/,
+	);
+
+	if (relativeDateMatch?.[1]) {
+		const daysFromToday =
+			relativeDateMatch[1] === "today"
+				? 0
+				: relativeDateMatch[1] === "day after tomorrow"
+					? 2
+					: 1;
+		return currentLocalDate.plus({ days: daysFromToday }).toISODate() ?? undefined;
+	}
+
+	const weekdayMatch = normalizedMessage.match(
+		/\b(next\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/,
+	);
+	if (!weekdayMatch?.[2]) return undefined;
+
+	const targetWeekday = WEEKDAY_NUMBERS[weekdayMatch[2]];
+	if (targetWeekday === undefined) return undefined;
+
+	const currentWeekday = currentLocalDate.weekday;
+	let daysAhead = (targetWeekday - currentWeekday + 7) % 7;
+
+	if (weekdayMatch[1] && daysAhead === 0) daysAhead = 7;
+
+	return currentLocalDate.plus({ days: daysAhead }).toISODate() ?? undefined;
 }
 
 function createRequestedDate(

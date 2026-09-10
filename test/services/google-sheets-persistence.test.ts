@@ -203,8 +203,10 @@ test("records completed or handed-off conversations in the Call Log tab", async 
 	};
 
 	await callLog.append(entry);
+	await callLog.append(entry);
 
 	const rows = client.getRows(business.sheets.spreadsheetId, business.sheets.callLogTabName);
+	assert.equal(rows.length, 2);
 	assert.deepEqual(rows[0]?.values, [
 		"businessId",
 		"conversationId",

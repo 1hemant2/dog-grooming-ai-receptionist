@@ -31,7 +31,7 @@ export async function closeServerGracefully(server: Server): Promise<void> {
 	});
 }
 
-export function registerShutdownSignals(server: Server): void {
+export function registerShutdownSignals(server: Server, onShutdown?: () => void): void {
 	let shuttingDown = false;
 
 	const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
@@ -50,6 +50,8 @@ export function registerShutdownSignals(server: Server): void {
 				errorName: error instanceof Error ? error.constructor.name : "UnknownError",
 			});
 			process.exitCode = 1;
+		} finally {
+			onShutdown?.();
 		}
 	};
 

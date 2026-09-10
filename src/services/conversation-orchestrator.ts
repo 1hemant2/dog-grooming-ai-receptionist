@@ -1,7 +1,7 @@
 import type { Appointment } from "../models/appointment.js";
 import type { BusinessConfig, ServiceId } from "../models/business.js";
 import type { Conversation } from "../models/conversation.js";
-import type { PetDetails } from "../models/customer.js";
+import { Customer, Pet, type PetDetails } from "../models/customer.js";
 import {
 	createConversationOutcome,
 	type ConversationOutcome,
@@ -9,9 +9,15 @@ import {
 	type InterpretedMessage,
 	type ReceptionistIntent,
 } from "../models/receptionist.js";
-import { formatLocalDateTime, localDateTimeToDate } from "./calendar-time.js";
+import {
+	addLocalDays,
+	formatLocalDateTime,
+	getLocalDate,
+	localDateTimeToDate,
+} from "./calendar-time.js";
 import {
 	BookingPersistenceError,
+	AppointmentUnavailableError,
 	type AppointmentBookingRequest,
 	type AppointmentBookingService,
 } from "./appointment-booking.js";
@@ -26,6 +32,7 @@ import {
 } from "./appointment-management.js";
 import type { BusinessInformationService } from "./business-information.js";
 import { getAppointmentDuration } from "./calendar-availability.js";
+import { isConversationResetRequest } from "./customer-message-parser.js";
 import type {
 	ComplaintRequest,
 	CustomerSupportService,
@@ -33,7 +40,15 @@ import type {
 	CustomerSupportResult,
 } from "./customer-support.js";
 import { AppointmentSlot } from "../models/appointment.js";
-import type { CallLog, MessageInterpreter, OwnerNotifier } from "./receptionist-dependencies.js";
+import type {
+	CallLog,
+	Contacts,
+	AvailabilityResult,
+	CalendarAvailability,
+	MessageInterpreter,
+	OwnerNotifier,
+	ContactRecord,
+} from "./receptionist-dependencies.js";
 
 export interface ConversationResponse {
 	reply: string;
@@ -56,9 +71,11 @@ export interface ConversationOrchestratorDependencies {
 		| "answerVaccination"
 	>;
 	booking: Pick<AppointmentBookingService, "book">;
+	availability: Pick<CalendarAvailability, "findAvailableSlots">;
 	management: Pick<AppointmentManagementService, "findAppointments" | "reschedule" | "cancel">;
 	support: Pick<CustomerSupportService, "handleLateArrival" | "recordComplaint">;
 	ownerNotifier: Pick<OwnerNotifier, "notify">;
+	contacts: Pick<Contacts, "findByContactPhone" | "save">;
 }
 
 interface AppointmentIdentityWithConversation extends AppointmentIdentity {
@@ -93,12 +110,15 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 			);
 		const intents: readonly ReceptionistIntent[] =
 			conversation.intents.length > 0 ? conversation.intents : ["unknown"];
+		const callLogOutcome = this.createCallLogOutcome(conversation, outcome);
+
+		await this.persistConversationContact(conversation);
 
 		await this.dependencies.callLog.append({
 			businessId: conversation.businessId,
 			conversationId: conversation.id,
 			intents,
-			outcome,
+			outcome: callLogOutcome,
 			endedAt: this.clock().toISOString(),
 			...(conversation.callerPhone ? { callerPhone: conversation.callerPhone } : {}),
 			...(conversation.contactPhone ? { contactPhone: conversation.contactPhone } : {}),
@@ -124,6 +144,14 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 				conversation,
 				"I’ve already sent the request to the owner. They will call you back.",
 				outcome,
+			);
+		}
+
+		if (isConversationResetRequest(message)) {
+			conversation.resetActiveRequest();
+			return this.ask(
+				conversation,
+				"Okay, I’ve cleared the current request. What would you like help with?",
 			);
 		}
 
@@ -154,6 +182,21 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 			);
 		}
 
+		if (
+			(conversation.alternativeSlotsOffered || conversation.alternativeSlotsRejected) &&
+			interpretedMessage.conversationAction === "reject_suggested_times"
+		) {
+			conversation.clearRequestedAppointmentSlot();
+			conversation.markAlternativeSlotsRejected();
+			return this.ask(
+				conversation,
+				"No problem. What other date or time would work for you?",
+				"requested_date",
+			);
+		}
+
+		conversation.clearAlternativeSlotsRejected();
+
 		const pricingHandoffResponse = await this.continuePricingHandoff(
 			interpretedMessage,
 			conversation,
@@ -166,7 +209,11 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 		);
 		if (interruptionResponse) return interruptionResponse;
 
+		const conversationAction = interpretedMessage.conversationAction;
 		interpretedMessage = conversation.updateActiveRequest(interpretedMessage);
+		if (conversationAction) {
+			interpretedMessage.conversationAction = conversationAction;
+		}
 
 		const contactPhoneResult = this.applyConfirmedContactPhone(
 			interpretedMessage,
@@ -657,6 +704,22 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 		].join("\n");
 
 		try {
+			await this.persistConversationContact(conversation);
+		} catch (error) {
+			console.error("Pricing handoff contact persistence failed.", {
+				businessId: conversation.businessId,
+				conversationId: conversation.id,
+				errorName: error instanceof Error ? error.constructor.name : "UnknownError",
+			});
+
+			return this.finish(
+				conversation,
+				"I could not save the callback details, so please contact the shop directly for this pricing review.",
+				outcome,
+			);
+		}
+
+		try {
 			await this.dependencies.ownerNotifier.notify(notification);
 			conversation.markOwnerHandoffNotified();
 		} catch (error) {
@@ -810,6 +873,34 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 			interpretedMessage.requestedTime,
 			getAppointmentDuration(this.business, service.durationMinutes, pet.weightLb),
 		);
+		let availability: AvailabilityResult;
+
+		try {
+			availability = await this.findBookingAvailability(
+				interpretedMessage.requestedDate,
+				interpretedMessage,
+				service.id,
+				pet,
+			);
+		} catch {
+			return this.escalateBookingReview(
+				interpretedMessage,
+				conversation,
+				service.name,
+				pet,
+				slot,
+				"Calendar availability could not be checked safely.",
+			);
+		}
+		const availabilityResponse = await this.handleUnavailableBooking(
+			interpretedMessage,
+			conversation,
+			service.name,
+			pet,
+			slot,
+			availability,
+		);
+		if (availabilityResponse) return availabilityResponse;
 
 		if (interpretedMessage.confirmation !== true) {
 			const appointmentTime = formatLocalDateTime(slot.startAt, this.business.timezone);
@@ -835,7 +926,51 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 				? { safetyConcern: interpretedMessage.safetyConcern }
 				: {}),
 		};
-		const appointment = await this.dependencies.booking.book(request);
+		let appointment: Appointment;
+
+		try {
+			appointment = await this.dependencies.booking.book(request);
+		} catch (error) {
+			if (!(error instanceof AppointmentUnavailableError)) throw error;
+
+			let latestAvailability: AvailabilityResult;
+
+			try {
+				latestAvailability = await this.findBookingAvailability(
+					interpretedMessage.requestedDate,
+					interpretedMessage,
+					service.id,
+					pet,
+				);
+			} catch {
+				return this.escalateBookingReview(
+					interpretedMessage,
+					conversation,
+					service.name,
+					pet,
+					slot,
+					"Calendar availability could not be rechecked safely.",
+				);
+			}
+			const conflictResponse = await this.handleUnavailableBooking(
+				interpretedMessage,
+				conversation,
+				service.name,
+				pet,
+				slot,
+				latestAvailability,
+			);
+			if (conflictResponse) return conflictResponse;
+
+			return this.escalateBookingReview(
+				interpretedMessage,
+				conversation,
+				service.name,
+				pet,
+				slot,
+				"The requested time changed while the booking was being completed.",
+			);
+		}
 		const outcome = createConversationOutcome(
 			"completed",
 			`${service.name} appointment booked for ${pet.name}.`,
@@ -848,6 +983,205 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 				appointment.startAt,
 				this.business.timezone,
 			)}.`,
+			outcome,
+		);
+	}
+
+	private async findBookingAvailability(
+		requestedDate: string,
+		interpretedMessage: InterpretedMessage,
+		serviceId: ServiceId,
+		pet: PetDetails,
+	): Promise<AvailabilityResult> {
+		const requestedDayOpening = localDateTimeToDate(
+			requestedDate,
+			this.business.openingTime,
+			this.business.timezone,
+		);
+		const searchFrom = new Date(
+			Math.max(requestedDayOpening.getTime(), this.clock().getTime()),
+		);
+
+		return this.dependencies.availability.findAvailableSlots({
+			businessId: this.business.id,
+			serviceId,
+			dogWeightLb: pet.weightLb,
+			searchFrom: searchFrom.toISOString(),
+			...(interpretedMessage.safetyConcern
+				? { safetyConcern: interpretedMessage.safetyConcern }
+				: {}),
+		});
+	}
+
+	private async handleUnavailableBooking(
+		interpretedMessage: InterpretedMessage,
+		conversation: Conversation,
+		serviceName: string,
+		pet: PetDetails,
+		requestedSlot: AppointmentSlot,
+		availability: AvailabilityResult,
+	): Promise<ConversationResponse | undefined> {
+		if (availability.status === "available") {
+			const requestedSlotIsAvailable = availability.slots.some(
+				(slot) =>
+					slot.startAt === requestedSlot.startAt && slot.endAt === requestedSlot.endAt,
+			);
+			if (requestedSlotIsAvailable) {
+				conversation.clearAlternativeSlotsOffered();
+				return undefined;
+			}
+
+			if (interpretedMessage.conversationAction === "require_exact_time") {
+				conversation.clearAlternativeSlotsOffered();
+				return this.escalateBookingReview(
+					interpretedMessage,
+					conversation,
+					serviceName,
+					pet,
+					requestedSlot,
+					"The requested time is unavailable, and the customer said no alternative time will work.",
+				);
+			}
+
+			const alternatives = this.getAlternativeSlots(availability, requestedSlot);
+			if (alternatives.length > 0) {
+				conversation.markAlternativeSlotsOffered();
+				return this.ask(
+					conversation,
+					this.formatAlternativeSlotsReply(
+						serviceName,
+						pet.name,
+						requestedSlot,
+						alternatives,
+					),
+					"requested_time",
+				);
+			}
+		}
+
+		if (interpretedMessage.conversationAction === "require_exact_time") {
+			conversation.clearAlternativeSlotsOffered();
+			return this.escalateBookingReview(
+				interpretedMessage,
+				conversation,
+				serviceName,
+				pet,
+				requestedSlot,
+				"The requested time is unavailable, and the customer said no alternative time will work.",
+			);
+		}
+
+		conversation.clearAlternativeSlotsOffered();
+		const reason =
+			availability.reason ??
+			`No suitable ${serviceName} appointment times were found in the next ${this.business.availabilitySearchDays} days.`;
+		return this.escalateBookingReview(
+			interpretedMessage,
+			conversation,
+			serviceName,
+			pet,
+			requestedSlot,
+			reason,
+		);
+	}
+
+	private getAlternativeSlots(
+		availability: AvailabilityResult,
+		requestedSlot: AppointmentSlot,
+	): AppointmentSlot[] {
+		const requestedStart = new Date(requestedSlot.startAt);
+		const requestedDate = getLocalDate(requestedStart, this.business.timezone);
+		const nextDate = addLocalDays(requestedDate, 1);
+		const sortedSlots = [...availability.slots].sort(
+			(first, second) =>
+				Math.abs(Date.parse(first.startAt) - requestedStart.getTime()) -
+				Math.abs(Date.parse(second.startAt) - requestedStart.getTime()),
+		);
+
+		return [
+			...sortedSlots.filter(
+				(slot) =>
+					getLocalDate(new Date(slot.startAt), this.business.timezone) === requestedDate,
+			),
+			...sortedSlots.filter(
+				(slot) => getLocalDate(new Date(slot.startAt), this.business.timezone) === nextDate,
+			),
+		].slice(0, 3);
+	}
+
+	private formatAlternativeSlotsReply(
+		serviceName: string,
+		petName: string,
+		requestedSlot: AppointmentSlot,
+		alternatives: readonly AppointmentSlot[],
+	): string {
+		const formattedSlots = alternatives.map((slot) =>
+			formatLocalDateTime(slot.startAt, this.business.timezone),
+		);
+		return `${formatLocalDateTime(requestedSlot.startAt, this.business.timezone)} is not available for ${petName}'s ${serviceName}. I can offer ${formatChoices(formattedSlots)} instead. Which time would you prefer?`;
+	}
+
+	private async escalateBookingReview(
+		interpretedMessage: InterpretedMessage,
+		conversation: Conversation,
+		serviceName: string,
+		pet: PetDetails,
+		requestedSlot: AppointmentSlot,
+		reason: string,
+	): Promise<ConversationResponse> {
+		const outcome = createConversationOutcome(
+			"needs_human",
+			`Booking needs owner review. ${reason}`,
+		);
+		const notification = [
+			"Appointment booking review required.",
+			`Business: ${this.business.name}`,
+			`Conversation: ${conversation.id}`,
+			`Customer: ${interpretedMessage.customerName ?? "Not provided"}`,
+			`Contact phone: ${conversation.contactPhone ?? interpretedMessage.contactPhone ?? "Not provided"}`,
+			`Pet: ${pet.name}`,
+			`Weight: ${pet.weightLb} lb`,
+			`Service: ${serviceName}`,
+			`Requested time: ${formatLocalDateTime(requestedSlot.startAt, this.business.timezone)}`,
+			`Reason: ${reason}`,
+		].join("\n");
+
+		try {
+			await this.persistConversationContact(conversation);
+		} catch (error) {
+			console.error("Booking handoff contact persistence failed.", {
+				businessId: conversation.businessId,
+				conversationId: conversation.id,
+				errorName: error instanceof Error ? error.constructor.name : "UnknownError",
+			});
+
+			return this.finish(
+				conversation,
+				"I could not save the callback details, so please contact the shop directly for this booking request.",
+				outcome,
+			);
+		}
+
+		try {
+			await this.dependencies.ownerNotifier.notify(notification);
+			conversation.markOwnerHandoffNotified();
+		} catch (error) {
+			console.error("Booking handoff notification failed.", {
+				businessId: conversation.businessId,
+				conversationId: conversation.id,
+				errorName: error instanceof Error ? error.constructor.name : "UnknownError",
+			});
+
+			return this.finish(
+				conversation,
+				"I couldn’t complete the booking automatically, and I could not reach the owner notification service. Please contact the shop directly so they can help with your request.",
+				outcome,
+			);
+		}
+
+		return this.finish(
+			conversation,
+			"I understand that the available times don’t work for you. I’ve sent your booking request to the owner, and they’ll call you back to see if they can help.",
 			outcome,
 		);
 	}
@@ -1247,6 +1581,136 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 		result: CustomerSupportResult,
 	): ConversationResponse {
 		return this.finish(conversation, result.reply, result.outcome);
+	}
+
+	private async persistConversationContact(conversation: Conversation): Promise<void> {
+		if (!conversation.contactPhone || conversation.contactPersisted) return;
+
+		const existingContact = await this.dependencies.contacts.findByContactPhone(
+			conversation.businessId,
+			conversation.contactPhone,
+		);
+		const activeRequest = conversation.activeRequest;
+		const customer = new Customer(
+			conversation.contactPhone,
+			activeRequest?.customerName ?? existingContact?.customer.name,
+		);
+		let pets = [...(existingContact?.pets ?? [])];
+
+		if (
+			activeRequest?.petName &&
+			activeRequest.weightLb !== undefined &&
+			Number.isFinite(activeRequest.weightLb) &&
+			activeRequest.weightLb > 0
+		) {
+			const petDetails: PetDetails = {
+				name: activeRequest.petName,
+				weightLb: activeRequest.weightLb,
+				rabiesVaccinationStatus: activeRequest.rabiesVaccinationStatus ?? "unknown",
+			};
+
+			if (activeRequest.breedOrMix) petDetails.breedOrMix = activeRequest.breedOrMix;
+			if (activeRequest.healthConcerns)
+				petDetails.healthConcerns = activeRequest.healthConcerns;
+			if (activeRequest.behaviorConcerns) {
+				petDetails.behaviorConcerns = activeRequest.behaviorConcerns;
+			}
+
+			const pet = new Pet(petDetails);
+			const petName = pet.name.toLowerCase();
+			pets = pets.filter((existingPet) => existingPet.name.toLowerCase() !== petName);
+			pets.push(pet);
+		}
+
+		const contact: ContactRecord = {
+			businessId: conversation.businessId,
+			customer,
+			pets,
+			lastContactAt: this.clock().toISOString(),
+		};
+
+		if (existingContact?.notes !== undefined) contact.notes = existingContact.notes;
+		await this.dependencies.contacts.save(contact);
+		conversation.markContactPersisted();
+	}
+
+	private createCallLogOutcome(
+		conversation: Conversation,
+		outcome: ConversationOutcome,
+	): ConversationOutcome {
+		const intents: readonly ReceptionistIntent[] =
+			conversation.intents.length > 0 ? conversation.intents : ["unknown"];
+		const intentLabels = intents.map((intent) => this.getIntentLabel(intent));
+		const handledRequests =
+			intentLabels.length === 1
+				? `Handled a ${intentLabels[0]} request.`
+				: `Handled ${this.joinLabels(intentLabels)} requests.`;
+		const requestDetails = this.getRequestDetails(conversation.activeRequest);
+		const context = [handledRequests, requestDetails].filter(Boolean).join(" ");
+
+		return createConversationOutcome(
+			outcome.status,
+			`${context} Outcome: ${outcome.summary}`,
+			outcome.appointmentId,
+		);
+	}
+
+	private getIntentLabel(intent: ReceptionistIntent): string {
+		switch (intent) {
+			case "book_appointment":
+				return "appointment booking";
+			case "reschedule_appointment":
+				return "appointment rescheduling";
+			case "cancel_appointment":
+				return "appointment cancellation";
+			case "business_hours":
+				return "business hours";
+			case "breed_or_size":
+				return "breed or size suitability";
+			case "running_late":
+				return "late arrival";
+			case "unknown":
+				return "general enquiry";
+			default:
+				return intent;
+		}
+	}
+
+	private joinLabels(labels: readonly string[]): string {
+		if (labels.length === 0) return "general enquiry";
+		if (labels.length === 1) return labels[0] ?? "general enquiry";
+		if (labels.length === 2) return `${labels[0]} and ${labels[1]}`;
+
+		return `${labels.slice(0, -1).join(", ")}, and ${labels.at(-1)}`;
+	}
+
+	private getRequestDetails(
+		request: Readonly<InterpretedMessage> | undefined,
+	): string | undefined {
+		if (!request) return undefined;
+
+		const service = this.findService(request)?.name ?? request.serviceName;
+		const subject = [service, request.petName ? `for ${request.petName}` : undefined]
+			.filter(Boolean)
+			.join(" ");
+		const details = [subject];
+
+		if (request.weightLb !== undefined) {
+			details.push(`${request.weightLb} lb`);
+		}
+
+		if (request.requestedDate || request.requestedTime) {
+			details.push(
+				`requested for ${[request.requestedDate, request.requestedTime]
+					.filter(Boolean)
+					.join(" at ")}`,
+			);
+		}
+
+		const normalizedDetails = details.filter(Boolean);
+		if (normalizedDetails.length === 0) return undefined;
+
+		return `Latest request details: ${normalizedDetails.join(", ")}.`;
 	}
 
 	private finish(

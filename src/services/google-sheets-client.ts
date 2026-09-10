@@ -38,16 +38,10 @@ export class GoogleSheetsClient implements SpreadsheetClient {
 		tabName: string,
 		values: readonly string[],
 	): Promise<void> {
-		await this.sheetsApi.spreadsheets.values.append(
-			{
-				spreadsheetId,
-				range: quoteTabName(tabName),
-				valueInputOption: "USER_ENTERED",
-				insertDataOption: "INSERT_ROWS",
-				requestBody: { values: [Array.from(values)] },
-			},
-			{ timeout: APPLICATION_CONFIG.externalRequestTimeoutMs },
-		);
+		const rows = await this.readRows(spreadsheetId, tabName);
+		const nextRowNumber = rows.length + 1;
+
+		await this.updateRow(spreadsheetId, tabName, nextRowNumber, values);
 	}
 
 	async updateRow(

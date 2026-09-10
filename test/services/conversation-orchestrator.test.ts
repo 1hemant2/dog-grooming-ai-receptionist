@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { findBusinessConfig } from "../../src/config/constants.js";
-import { Appointment } from "../../src/models/appointment.js";
+import { Appointment, AppointmentSlot } from "../../src/models/appointment.js";
 import { Conversation } from "../../src/models/conversation.js";
 import {
 	type AppointmentBookingRequest,
@@ -14,13 +14,19 @@ import {
 	ConversationOrchestrator,
 	type ConversationOrchestratorDependencies,
 } from "../../src/services/conversation-orchestrator.js";
+import { getAppointmentDuration } from "../../src/services/calendar-availability.js";
 import {
 	GeminiMessageInterpreter,
 	type GeminiContentClient,
 } from "../../src/services/gemini-message-interpreter.js";
 import type {
+	AvailabilityRequest,
+	AvailabilityResult,
 	CallLog,
 	CallLogEntry,
+	CalendarAvailability,
+	ContactRecord,
+	Contacts,
 	MessageInterpreter,
 	OwnerNotifier,
 } from "../../src/services/receptionist-dependencies.js";
@@ -92,6 +98,43 @@ class FakeOwnerNotifier implements OwnerNotifier {
 	}
 }
 
+class FakeContacts implements Contacts {
+	readonly savedContacts: ContactRecord[] = [];
+
+	async findByContactPhone(): Promise<ContactRecord | undefined> {
+		return undefined;
+	}
+
+	async save(contact: ContactRecord): Promise<void> {
+		this.savedContacts.push(contact);
+	}
+}
+
+function createAlwaysAvailable(): CalendarAvailability {
+	return {
+		async findAvailableSlots(request: AvailabilityRequest): Promise<AvailabilityResult> {
+			const service = configuredBusiness.services.find(
+				(configuredService) => configuredService.id === request.serviceId,
+			);
+			const durationMinutes = getAppointmentDuration(
+				configuredBusiness,
+				service?.durationMinutes ?? 60,
+				request.dogWeightLb,
+			);
+			const searchStart = Date.parse(request.searchFrom);
+			const slots: AppointmentSlot[] = [];
+
+			for (let offsetMinutes = 0; offsetMinutes <= 7 * 60; offsetMinutes += 30) {
+				const startAt = new Date(searchStart + offsetMinutes * 60_000);
+				const endAt = new Date(startAt.getTime() + durationMinutes * 60_000);
+				slots.push(new AppointmentSlot(startAt.toISOString(), endAt.toISOString()));
+			}
+
+			return { status: "available", slots };
+		},
+	};
+}
+
 function createDependencies(
 	booking: Pick<AppointmentBookingService, "book"> = {
 		async book(): Promise<Appointment> {
@@ -108,11 +151,14 @@ function createDependencies(
 	},
 	callLog: CallLog = new FakeCallLog(),
 	ownerNotifier: OwnerNotifier = new FakeOwnerNotifier(),
+	contacts: Contacts = new FakeContacts(),
+	availability: CalendarAvailability = createAlwaysAvailable(),
 ): ConversationOrchestratorDependencies {
 	return {
 		callLog,
 		information: new BusinessInformationService(configuredBusiness),
 		booking,
+		availability,
 		management: {
 			async findAppointments() {
 				return { status: "not_found", appointments: [] };
@@ -133,6 +179,7 @@ function createDependencies(
 			},
 		},
 		ownerNotifier,
+		contacts,
 	};
 }
 
@@ -176,6 +223,10 @@ test("writes one final Call Log entry when the conversation ends", async () => {
 	assert.equal(callLog.entries[0]?.conversationId, conversation.id);
 	assert.deepEqual(callLog.entries[0]?.intents, ["business_hours"]);
 	assert.equal(callLog.entries[0]?.outcome.status, "answered");
+	assert.match(
+		callLog.entries[0]?.outcome.summary ?? "",
+		/^Handled a business hours request\. Outcome:/,
+	);
 });
 
 test("writes all distinct conversation intents in their first-seen order", async () => {
@@ -194,6 +245,10 @@ test("writes all distinct conversation intents in their first-seen order", async
 	await orchestrator.endConversation(conversation);
 
 	assert.deepEqual(callLog.entries[0]?.intents, ["pricing", "book_appointment", "complaint"]);
+	assert.match(
+		callLog.entries[0]?.outcome.summary ?? "",
+		/^Handled pricing, appointment booking, and complaint requests\. Outcome:/,
+	);
 });
 
 test("handles interpreter failure without calling an application service", async () => {
@@ -214,6 +269,130 @@ test("handles interpreter failure without calling an application service", async
 
 	assert.equal(result.outcome.status, "needs_information");
 	assert.match(result.reply, /rephrase/);
+	assert.equal(bookingCalled, false);
+});
+
+test("resets an active request locally without calling the interpreter", async () => {
+	const orchestrator = new ConversationOrchestrator(
+		configuredBusiness,
+		new FakeInterpreter(new Error("The interpreter should not be called for reset")),
+		createDependencies(),
+	);
+	const conversation = createConversation();
+	conversation.confirmContactPhone("+14155550100");
+	conversation.updateActiveRequest({
+		intent: "book_appointment",
+		petName: "Milo",
+		serviceId: "bath",
+	});
+	conversation.recordOutcome(
+		createConversationOutcome("needs_information", "What day works best for Milo?"),
+	);
+	conversation.expectCustomerField("requested_date");
+
+	const result = await orchestrator.handleMessage("I want to reset in between", conversation);
+
+	assert.equal(result.outcome.status, "needs_information");
+	assert.match(result.reply, /cleared the current request/);
+	assert.equal(conversation.activeRequest, undefined);
+	assert.equal(conversation.expectedCustomerField, undefined);
+	assert.equal(conversation.contactPhone, "+14155550100");
+});
+
+test("asks for a new date when Gemini classifies rejection of all alternate slots", async () => {
+	const orchestrator = new ConversationOrchestrator(
+		configuredBusiness,
+		new FakeInterpreter({
+			intent: "book_appointment",
+			conversationAction: "reject_suggested_times",
+		}),
+		createDependencies(),
+	);
+	const conversation = createConversation();
+	conversation.updateActiveRequest({
+		intent: "book_appointment",
+		petName: "Nai",
+		serviceId: "bath",
+		requestedDate: "2026-09-11",
+		requestedTime: "15:00",
+	});
+	conversation.recordOutcome(
+		createConversationOutcome("needs_information", "Which alternate time works?"),
+	);
+	conversation.expectCustomerField("requested_time");
+	conversation.markAlternativeSlotsOffered();
+
+	const result = await orchestrator.handleMessage("noone", conversation);
+
+	assert.equal(result.outcome.status, "needs_information");
+	assert.equal(result.reply, "No problem. What other date or time would work for you?");
+	assert.equal(conversation.activeRequest?.requestedDate, undefined);
+	assert.equal(conversation.activeRequest?.requestedTime, undefined);
+	assert.equal(conversation.expectedCustomerField, "requested_date");
+	assert.equal(conversation.alternativeSlotsOffered, false);
+	assert.equal(conversation.alternativeSlotsRejected, true);
+});
+
+test("sends an unavailable exact-time-only request to the owner without repeating slots", async () => {
+	let bookingCalled = false;
+	const ownerNotifier = new FakeOwnerNotifier();
+	const availability: CalendarAvailability = {
+		async findAvailableSlots(): Promise<AvailabilityResult> {
+			return {
+				status: "available",
+				slots: [
+					new AppointmentSlot("2026-09-12T21:00:00.000Z", "2026-09-12T22:00:00.000Z"),
+				],
+			};
+		},
+	};
+	const orchestrator = new ConversationOrchestrator(
+		configuredBusiness,
+		new FakeInterpreter({
+			intent: "book_appointment",
+			conversationAction: "require_exact_time",
+			requestedDate: "2026-09-12",
+			requestedTime: "15:00",
+		}),
+		createDependencies(
+			{
+				async book(): Promise<Appointment> {
+					bookingCalled = true;
+					throw new Error("Should not be called");
+				},
+			},
+			undefined,
+			ownerNotifier,
+			undefined,
+			availability,
+		),
+		() => new Date("2026-09-10T12:00:00.000Z"),
+	);
+	const conversation = createConversation();
+	conversation.confirmContactPhone("+14155550100");
+	conversation.updateActiveRequest({
+		intent: "book_appointment",
+		customerName: "Alex Morgan",
+		petName: "Rani",
+		weightLb: 25,
+		rabiesVaccinationStatus: "current",
+		serviceId: "bath",
+	});
+	conversation.recordOutcome(
+		createConversationOutcome("needs_information", "What other date or time works?"),
+	);
+	conversation.expectCustomerField("requested_date");
+	conversation.markAlternativeSlotsRejected();
+
+	const result = await orchestrator.handleMessage(
+		"Only 3 PM tomorrow will work for me",
+		conversation,
+	);
+
+	assert.equal(result.outcome.status, "needs_human");
+	assert.match(result.reply, /sent your booking request to the owner/i);
+	assert.doesNotMatch(result.reply, /customer said|no alternative time/i);
+	assert.equal(ownerNotifier.notifications.length, 1);
 	assert.equal(bookingCalled, false);
 });
 
@@ -247,6 +426,148 @@ test("does not write a booking before explicit confirmation", async () => {
 	assert.equal(result.outcome.status, "needs_information");
 	assert.match(result.reply, /confirm/);
 	assert.equal(bookingCalled, false);
+});
+
+test("offers alternate appointment times before asking for owner review", async () => {
+	let bookingCalled = false;
+	let availabilityCallCount = 0;
+	const availability: CalendarAvailability = {
+		async findAvailableSlots(): Promise<AvailabilityResult> {
+			availabilityCallCount += 1;
+
+			if (availabilityCallCount === 1) {
+				return {
+					status: "available",
+					slots: [
+						new AppointmentSlot("2026-09-12T21:00:00.000Z", "2026-09-12T22:00:00.000Z"),
+						new AppointmentSlot("2026-09-12T23:00:00.000Z", "2026-09-13T00:00:00.000Z"),
+					],
+				};
+			}
+
+			return {
+				status: "available",
+				slots: [
+					new AppointmentSlot("2026-09-12T21:00:00.000Z", "2026-09-12T22:00:00.000Z"),
+				],
+			};
+		},
+	};
+	const interpreter = new SequenceInterpreter([
+		{
+			intent: "book_appointment",
+			customerName: "Alex Morgan",
+			contactPhone: "+14155550100",
+			contactPhoneConfirmed: true,
+			petName: "Milo",
+			weightLb: 25,
+			rabiesVaccinationStatus: "current",
+			serviceId: "bath",
+			requestedDate: "2026-09-12",
+			requestedTime: "15:00",
+		},
+		{
+			intent: "book_appointment",
+			requestedDate: "2026-09-12",
+			requestedTime: "14:00",
+		},
+		{
+			intent: "book_appointment",
+			confirmation: true,
+		},
+	]);
+	const orchestrator = new ConversationOrchestrator(
+		configuredBusiness,
+		interpreter,
+		createDependencies(
+			{
+				async book(): Promise<Appointment> {
+					bookingCalled = true;
+					return new Appointment({
+						id: "appointment-alternate-time",
+						businessId: configuredBusiness.id,
+						contactPhone: "+14155550100",
+						petName: "Milo",
+						serviceId: "bath",
+						startAt: "2026-09-12T21:00:00.000Z",
+						endAt: "2026-09-12T22:00:00.000Z",
+					});
+				},
+			},
+			undefined,
+			undefined,
+			undefined,
+			availability,
+		),
+	);
+	const conversation = createConversation();
+
+	const alternativeResponse = await orchestrator.handleMessage("Book it at 3 PM", conversation);
+	assert.equal(conversation.expectedCustomerField, "requested_time");
+	const confirmationResponse = await orchestrator.handleMessage("2 PM works", conversation);
+	const completedResponse = await orchestrator.handleMessage("Yes", conversation);
+
+	assert.equal(alternativeResponse.outcome.status, "needs_information");
+	assert.match(alternativeResponse.reply, /3:00 PM PDT is not available/);
+	assert.match(alternativeResponse.reply, /2:00 PM PDT/);
+	assert.match(alternativeResponse.reply, /4:00 PM PDT/);
+	assert.match(confirmationResponse.reply, /confirm/);
+	assert.equal(completedResponse.outcome.status, "completed");
+	assert.equal(bookingCalled, true);
+	assert.equal(conversation.ownerHandoffNotified, false);
+});
+
+test("notifies the owner when no alternate appointment time exists", async () => {
+	let bookingCalled = false;
+	const ownerNotifier = new FakeOwnerNotifier();
+	const contacts = new FakeContacts();
+	const availability: CalendarAvailability = {
+		async findAvailableSlots(): Promise<AvailabilityResult> {
+			return {
+				status: "unavailable",
+				slots: [],
+				reason: "No suitable appointment slots were found in the search window.",
+			};
+		},
+	};
+	const orchestrator = new ConversationOrchestrator(
+		configuredBusiness,
+		new FakeInterpreter({
+			intent: "book_appointment",
+			customerName: "Alex Morgan",
+			contactPhone: "+14155550100",
+			contactPhoneConfirmed: true,
+			petName: "Milo",
+			weightLb: 25,
+			rabiesVaccinationStatus: "current",
+			serviceId: "bath",
+			requestedDate: "2026-09-12",
+			requestedTime: "15:00",
+			confirmation: true,
+		}),
+		createDependencies(
+			{
+				async book(): Promise<Appointment> {
+					bookingCalled = true;
+					throw new Error("Should not be called");
+				},
+			},
+			undefined,
+			ownerNotifier,
+			contacts,
+			availability,
+		),
+	);
+
+	const response = await orchestrator.handleMessage("Book it at 3 PM", createConversation());
+
+	assert.equal(response.outcome.status, "needs_human");
+	assert.match(response.reply, /sent your booking request to the owner/);
+	assert.equal(ownerNotifier.notifications.length, 1);
+	assert.match(ownerNotifier.notifications[0] ?? "", /3:00 PM PDT/);
+	assert.match(ownerNotifier.notifications[0] ?? "", /No suitable appointment slots/);
+	assert.equal(bookingCalled, false);
+	assert.equal(contacts.savedContacts.length, 1);
 });
 
 test("asks for one missing booking detail at a time", async () => {
@@ -415,6 +736,7 @@ test("preserves dog details while collecting the service needed for a price esti
 test("escalates oversized pricing once while preserving the selected service", async () => {
 	const ownerNotifier = new FakeOwnerNotifier();
 	const callLog = new FakeCallLog();
+	const contacts = new FakeContacts();
 	const interpreter = new SequenceInterpreter([
 		{ intent: "pricing", serviceId: "full-groom", weightLb: 50 },
 		{ intent: "pricing", weightLb: 100 },
@@ -427,7 +749,7 @@ test("escalates oversized pricing once while preserving the selected service", a
 	const orchestrator = new ConversationOrchestrator(
 		configuredBusiness,
 		interpreter,
-		createDependencies(undefined, callLog, ownerNotifier),
+		createDependencies(undefined, callLog, ownerNotifier, contacts),
 	);
 	const conversation = new Conversation({
 		id: "conversation-oversized-pricing",
@@ -477,6 +799,9 @@ test("escalates oversized pricing once while preserving the selected service", a
 	assert.equal(callLog.entries[0]?.outcome.status, "needs_human");
 	assert.equal(callLog.entries[0]?.outcome.callbackRequested, true);
 	assert.equal(callLog.entries[0]?.contactPhone, "+14155550100");
+	assert.equal(contacts.savedContacts.length, 1);
+	assert.equal(contacts.savedContacts[0]?.customer.name, "Hemant Kumar");
+	assert.equal(contacts.savedContacts[0]?.pets[0]?.name, "Tommy");
 });
 
 test("does not claim an owner handoff when notification fails", async () => {

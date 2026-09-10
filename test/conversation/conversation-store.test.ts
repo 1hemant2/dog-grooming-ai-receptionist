@@ -183,3 +183,31 @@ test("does not delete another business's conversation", () => {
 	});
 	assert.equal(resumedConversationId, conversationId);
 });
+
+test("finds conversations that have been idle past the configured timeout", () => {
+	let now = new Date("2026-09-10T12:00:00.000Z");
+	const store = new InMemoryConversationStore(() => now);
+	const conversationId = store.receiveMessage({
+		businessId: firstMessage.businessId,
+		message: firstMessage.message,
+		conversationId: undefined,
+	});
+
+	now = new Date("2026-09-10T12:14:59.999Z");
+	assert.equal(store.getInactiveConversations(15 * 60 * 1_000, now).length, 0);
+
+	now = new Date("2026-09-10T12:15:00.000Z");
+	assert.deepEqual(
+		store.getInactiveConversations(15 * 60 * 1_000, now).map((conversation) => conversation.id),
+		[conversationId],
+	);
+
+	store.receiveMessage({
+		businessId: firstMessage.businessId,
+		message: "I am still here",
+		conversationId,
+	});
+
+	now = new Date("2026-09-10T12:29:59.999Z");
+	assert.equal(store.getInactiveConversations(15 * 60 * 1_000, now).length, 0);
+});

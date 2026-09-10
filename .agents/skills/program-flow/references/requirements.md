@@ -71,6 +71,7 @@ Build a text-based AI receptionist for Maple Street Dog Grooming. It should hand
 - Aggression, severe anxiety, active illness, or injury requires human review.
 - Phase 1 handoff records `needs_human` in the Call Log and tells the customer that the owner will call back.
 - Phase 1 owner notifications use the Telegram Bot API. The bot token and target chat ID come from application configuration and are never hard-coded or accepted from customer messages.
+- A conversation that has no new message for the configured idle timeout is finalized automatically. The default Phase 1 idle timeout is 15 minutes.
 - Availability searches cover the next seven days. If no suitable slot exists, ask for another date range or create a callback request.
 
 ## Shared conversation lifecycle
@@ -80,24 +81,29 @@ Build a text-based AI receptionist for Maple Street Dog Grooming. It should hand
 3. Collect only the information needed for that request. For customer-specific operations, collect and confirm a `contactPhone`.
 4. When required information is missing, ask for one item at a time and preserve facts already supplied earlier in the conversation.
 5. Preserve active-request facts as structured conversation state. The message interpreter extracts the latest answer instead of reconstructing every fact from the complete transcript.
-6. Parse expected short answers such as phone numbers, names, weights, dates, times, and confirmations locally when they are unambiguous. Use the LLM when the answer cannot be safely interpreted locally.
-7. Accept natural appointment dates such as `11th September` and resolve a missing year to the next occurrence in the business timezone.
+6. Parse expected short answers such as phone numbers, names, weights, dates, times, and confirmations locally when they are unambiguous. Use the LLM when the answer cannot be safely interpreted locally. Use the LLM to classify context-dependent replies, such as whether the customer rejected all recently offered appointment times, instead of enumerating possible wording with regular expressions.
+7. Accept natural appointment dates such as `11th September`, relative dates such as `tomorrow`, and common spelling mistakes such as `tommorow`; resolve them in the business timezone.
 8. During an active booking, answer a service-information side question without discarding the booking state, then resume by asking for the next missing booking field.
 9. During an active request, preserve the request when the customer asks an unrelated question. Explain the receptionist's supported scope and return to the next missing field.
-10. When the customer clearly starts another request, retain the conversation but do not reuse details that only belonged to the earlier request.
-11. Check the relevant source of truth for that business: shop information, policy, or Calendar.
-12. Answer the question, propose an available option, or hand the request to a human.
-13. Before changing Calendar, confirm the customer, pet, service, date, and time.
-14. Check Calendar again immediately before writing to avoid a stale availability result.
-15. Perform the approved Calendar action once and verify that it succeeded.
-16. Update the contact record in the business's Sheets records as needed.
-17. Tell the customer what happened and ask whether they need anything else.
+10. When the customer explicitly says reset, start over, or begin a new request, clear only the active request and pending question while preserving the conversation and confirmed contact phone.
+11. When the customer clearly starts another request, retain the conversation but do not reuse details that only belonged to the earlier request.
+12. Check the relevant source of truth for that business: shop information, policy, or Calendar.
+13. Answer the question, propose an available option, or hand the request to a human.
+14. Before changing Calendar, confirm the customer, pet, service, date, and time.
+15. Check Calendar again immediately before writing to avoid a stale availability result.
+16. Perform the approved Calendar action once and verify that it succeeded.
+17. Update the contact record in the business's Sheets records as needed.
+18. Tell the customer what happened and ask whether they need anything else.
 
-Customer-facing questions use conversational language and refer to known details, such as the pet's name, when helpful. Internal terms such as `configured service` are not shown to customers. Customer-facing appointment dates and times are formatted in the business timezone; UTC remains an internal Calendar and persistence representation.
+Customer-facing questions use conversational language and refer to known details, such as the pet's name, when helpful. Internal terms such as `configured service`, diagnostic reasons, and orchestration instructions are not shown to customers. Customer-facing appointment dates and times are formatted in the business timezone; UTC remains an internal Calendar and persistence representation.
 
 When the customer ends the conversation, save all handled intents, the final outcome, and conversation
 metadata to one Call Log row before deleting the in-memory conversation. If the Call Log write fails,
 preserve the conversation so it can be retried or handed to a human.
+
+If the customer does not explicitly end the conversation, finalize it after the idle timeout using the
+same Call Log and cleanup flow. Do not write a second row if an explicit end or timeout finalization
+has already succeeded.
 
 If a required lookup fails, the receptionist must not guess. It should explain that it cannot complete the request and preserve enough context for a human to continue.
 
@@ -119,7 +125,9 @@ Gemini receives only a bounded recent-history window plus the current active int
 6. Check the requested appointment time only after the service and required duration are known.
 7. If the time is available, collect the customer's name and confirmed `contactPhone`, confirm the details, and book it.
 8. If the time is unavailable, offer the nearest available time on the same day, then the next day. Prefer times closest to the customer's requested time.
-9. Book only after the customer accepts an offered time.
+9. If none of the offered alternatives work, ask for another date or time and search again. If the customer says the original unavailable time is their only option, stop repeating alternatives and send the request to the owner for review.
+10. If no suitable time exists in the search window, collect the confirmed callback details, notify the owner, and tell the customer that the owner will call back.
+11. Book only after the customer accepts an offered time.
 
 ### Pricing enquiry
 
@@ -198,7 +206,9 @@ Gemini receives only a bounded recent-history window plus the current active int
 ### Contacts
 
 Keep one row per confirmed `contactPhone` with the customer name, pet name, breed or mix, size, vaccination status, notes, and last-contact time.
+Persist collected callback contact details before notifying the owner when a human handoff requires a callback.
 
 ### Call Log
 
 Keep one row per conversation with the timestamp, conversation ID, `callerPhone` when available, confirmed `contactPhone` when collected, all handled intents in conversation order, the final outcome, appointment identifier, and human-handoff summary when applicable.
+Build the human-readable outcome summary from deterministic conversation facts and the final outcome. Do not make an extra LLM request only to summarize the conversation.

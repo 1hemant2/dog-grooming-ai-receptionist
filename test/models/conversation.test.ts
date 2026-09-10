@@ -84,6 +84,40 @@ test("preserves structured facts while collecting one active request", () => {
 	assert.equal(conversation.expectedCustomerField, undefined);
 });
 
+test("resets the active request without removing conversation contact details", () => {
+	const conversation = new Conversation(conversationDetails);
+	conversation.confirmContactPhone("+14155550102");
+	conversation.updateActiveRequest({
+		intent: "book_appointment",
+		petName: "Milo",
+		serviceId: "bath",
+	});
+	conversation.recordOutcome(
+		createConversationOutcome("needs_information", "What day works best?"),
+	);
+	conversation.expectCustomerField("requested_date");
+
+	conversation.resetActiveRequest();
+
+	assert.equal(conversation.activeRequest, undefined);
+	assert.equal(conversation.expectedCustomerField, undefined);
+	assert.equal(conversation.outcome, undefined);
+	assert.equal(conversation.contactPhone, "+14155550102");
+});
+
+test("tracks whether offered appointment times were rejected", () => {
+	const conversation = new Conversation(conversationDetails);
+	conversation.updateActiveRequest({ intent: "book_appointment" });
+
+	conversation.markAlternativeSlotsOffered();
+	assert.equal(conversation.alternativeSlotsOffered, true);
+	assert.equal(conversation.alternativeSlotsRejected, false);
+
+	conversation.markAlternativeSlotsRejected();
+	assert.equal(conversation.alternativeSlotsOffered, false);
+	assert.equal(conversation.alternativeSlotsRejected, true);
+});
+
 test("does not reuse completed request facts for a new request", () => {
 	const conversation = new Conversation(conversationDetails);
 	conversation.updateActiveRequest({

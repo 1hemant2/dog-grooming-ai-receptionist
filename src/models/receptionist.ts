@@ -17,6 +17,8 @@ export type ReceptionistIntent =
 export type ConversationOutcomeStatus =
 	"answered" | "needs_information" | "completed" | "unavailable" | "needs_human";
 
+export type ConversationAction = "continue" | "reject_suggested_times" | "require_exact_time";
+
 export type ComplaintCategory =
 	| "operational"
 	| "refund_or_charge"
@@ -51,6 +53,7 @@ export interface ConversationOutcome {
 
 export interface InterpretedMessage {
 	intent: ReceptionistIntent;
+	conversationAction?: ConversationAction;
 	customerName?: string;
 	contactPhone?: string;
 	contactPhoneConfirmed?: boolean;

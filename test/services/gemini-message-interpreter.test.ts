@@ -28,6 +28,7 @@ class FakeGeminiClient implements GeminiContentClient {
 	callCount = 0;
 	responseText = JSON.stringify({
 		intent: "book_appointment",
+		conversationAction: "continue",
 		customerName: "Alex Morgan",
 		contactPhone: "+14155550100",
 		contactPhoneConfirmed: true,
@@ -214,6 +215,112 @@ test("resolves an expected natural date to the next occurrence locally", async (
 	);
 
 	assert.equal(result.requestedDate, "2026-09-11");
+	assert.equal(client.callCount, 0);
+});
+
+test("reads a full alternate appointment date and time locally", async () => {
+	const client = new FakeGeminiClient();
+	const interpreter = new GeminiMessageInterpreter(
+		{ apiKey: "test-key", model: "test-model" },
+		client,
+		() => new Date("2026-09-10T12:00:00.000Z"),
+	);
+
+	const result = await interpreter.interpret(
+		"Saturday, September 12 at 2 PM works.",
+		configuredBusiness,
+		createConversationAwaiting("requested_time"),
+	);
+
+	assert.equal(result.requestedDate, "2026-09-12");
+	assert.equal(result.requestedTime, "14:00");
+	assert.equal(client.callCount, 0);
+});
+
+test("uses Gemini to classify a response after appointment alternatives were offered", async () => {
+	const client = new FakeGeminiClient();
+	client.responseText = JSON.stringify({
+		intent: "book_appointment",
+		conversationAction: "reject_suggested_times",
+	});
+	const interpreter = new GeminiMessageInterpreter(
+		{ apiKey: "test-key", model: "test-model" },
+		client,
+	);
+	const conversation = createConversationAwaiting("requested_time");
+	conversation.markAlternativeSlotsOffered();
+
+	const result = await interpreter.interpret("none", configuredBusiness, conversation);
+
+	assert.equal(result.conversationAction, "reject_suggested_times");
+	assert.equal(client.callCount, 1);
+	assert.match(String(client.parameters?.contents), /alternatives were just offered: true/i);
+});
+
+test("uses Gemini when the customer proposes an exact time after rejecting alternatives", async () => {
+	const client = new FakeGeminiClient();
+	client.responseText = JSON.stringify({
+		intent: "book_appointment",
+		conversationAction: "require_exact_time",
+		requestedDate: "2026-09-11",
+		requestedTime: "15:00",
+	});
+	const interpreter = new GeminiMessageInterpreter(
+		{ apiKey: "test-key", model: "test-model" },
+		client,
+		() => new Date("2026-09-10T12:00:00.000Z"),
+	);
+	const conversation = createConversationAwaiting("requested_date");
+	conversation.markAlternativeSlotsRejected();
+
+	const result = await interpreter.interpret(
+		"only 3pm tommrow will work for me",
+		configuredBusiness,
+		conversation,
+	);
+
+	assert.equal(result.conversationAction, "require_exact_time");
+	assert.equal(result.requestedDate, "2026-09-11");
+	assert.equal(result.requestedTime, "15:00");
+	assert.equal(client.callCount, 1);
+	assert.match(String(client.parameters?.contents), /recently rejected.*true/i);
+});
+
+test("reads a misspelled relative date and time locally", async () => {
+	const client = new FakeGeminiClient();
+	const interpreter = new GeminiMessageInterpreter(
+		{ apiKey: "test-key", model: "test-model" },
+		client,
+		() => new Date("2026-09-10T12:00:00.000Z"),
+	);
+
+	const result = await interpreter.interpret(
+		"tommorow 3pm will only work for me",
+		configuredBusiness,
+		createConversationAwaiting("requested_date"),
+	);
+
+	assert.equal(result.requestedDate, "2026-09-11");
+	assert.equal(result.requestedTime, "15:00");
+	assert.equal(client.callCount, 0);
+});
+
+test("reads the common tommrow spelling locally", async () => {
+	const client = new FakeGeminiClient();
+	const interpreter = new GeminiMessageInterpreter(
+		{ apiKey: "test-key", model: "test-model" },
+		client,
+		() => new Date("2026-09-10T12:00:00.000Z"),
+	);
+
+	const result = await interpreter.interpret(
+		"only 3pm tommrow will work for me",
+		configuredBusiness,
+		createConversationAwaiting("requested_date"),
+	);
+
+	assert.equal(result.requestedDate, "2026-09-11");
+	assert.equal(result.requestedTime, "15:00");
 	assert.equal(client.callCount, 0);
 });
 

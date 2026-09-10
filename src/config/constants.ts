@@ -44,6 +44,10 @@ export const EXT = {
 				"callbackRequested",
 				"appointmentId",
 			],
+			columns: {
+				// Zero-based position of conversationId in a Call Log row (column B).
+				conversationId: 1,
+			},
 		},
 	},
 };
@@ -56,11 +60,16 @@ export const APPLICATION_CONFIG = {
 	externalRequestTimeoutMs: 30_000,
 	interpreterHistoryMessageLimit: 6,
 	interpreterMaxOutputTokens: 300,
+	conversationIdleTimeoutMs: 15 * 60 * 1_000,
+	conversationCleanupIntervalMs: 60 * 1_000,
 };
 
 export const APPLICATION_PATTERNS = {
 	// Matches a 24-hour time in HH:mm format, from 00:00 through 23:59.
 	time24Hour: /^(?:[01][0-9]|2[0-3]):[0-5][0-9]$/,
+	// Matches explicit customer commands that clear the current request.
+	conversationReset:
+		/^(?:(?:please|can we|i want to|i would like to|let s|lets)\s+)?(?:reset(?:\s+in between|\s+(?:the|this|that|current|my)\s+(?:request|booking|conversation|flow))?|start over|start again|begin again|(?:new|start a new) (?:request|conversation)|forget this|forget that|cancel (?:this|that) and start(?: over| again))$/i,
 };
 
 // Store business configurations in an array so new vendors can be added without changing request handling.

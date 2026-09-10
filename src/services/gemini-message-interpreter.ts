@@ -6,6 +6,7 @@ import type { BusinessConfig, ServiceId } from "../models/business.js";
 import type { Conversation, ConversationMessage } from "../models/conversation.js";
 import type {
 	ComplaintCategory,
+	ConversationAction,
 	InterpretedMessage,
 	ReceptionistIntent,
 } from "../models/receptionist.js";
@@ -47,9 +48,12 @@ export class GeminiMessageInterpreter implements MessageInterpreter {
 		conversation: Conversation,
 	): Promise<InterpretedMessage> {
 		const currentLocalDate = DateTime.fromJSDate(this.clock()).setZone(business.timezone);
-		const locallyInterpreted =
-			interpretExpectedAnswer(message, business, conversation, currentLocalDate) ??
-			interpretServiceDetailsQuestion(message, business);
+		const needsConversationAction =
+			conversation.alternativeSlotsOffered || conversation.alternativeSlotsRejected;
+		const locallyInterpreted = needsConversationAction
+			? undefined
+			: (interpretExpectedAnswer(message, business, conversation, currentLocalDate) ??
+				interpretServiceDetailsQuestion(message, business));
 
 		if (locallyInterpreted) {
 			console.info("Message interpretation completed locally.", {
@@ -156,6 +160,10 @@ function buildPrompt(
 		"When a pricing conversation already has a service and the customer supplies a new weight, preserve the selected service.",
 		"When the latest message clearly starts a new request, use that new intent and ignore details that only belong to an earlier completed request.",
 		"Choose one active intent for the current message. Do not combine multiple intents in one interpretation.",
+		"Set conversationAction to reject_suggested_times when the customer rejects every appointment alternative that the receptionist just offered, including short or misspelled replies such as none, no one, noone, or none of those work.",
+		"Set conversationAction to require_exact_time when the customer says a particular date or time is the only option that works. Extract that requested date and time too.",
+		"Set conversationAction to continue when the customer accepts or proposes a date or time without saying it is their only option.",
+		"Use reject_suggested_times only when appointment alternatives were offered in the conversation context.",
 		"If the customer asks about something unrelated to dog grooming, use the unknown intent. Do not answer general knowledge or programming questions.",
 		"Extract facts only when the customer stated them or clearly confirmed them. Do not copy a receptionist suggestion as a customer fact unless the customer accepted it.",
 		"Do not invent appointment IDs, contact details, prices, availability, or resolutions.",
@@ -173,6 +181,8 @@ function buildPrompt(
 		`Services: ${services}`,
 		`Active request intent: ${conversation.activeRequest?.intent ?? "none"}`,
 		`Expected answer type: ${conversation.expectedCustomerField ?? "none"}`,
+		`Appointment alternatives were just offered: ${conversation.alternativeSlotsOffered}`,
+		`Customer recently rejected offered alternatives: ${conversation.alternativeSlotsRejected}`,
 		`Conversation already has a confirmed contact phone: ${conversation.contactPhone !== undefined}`,
 		`Current customer message: ${message}`,
 		`Recent conversation before the current message:\n${history || "(none)"}`,
@@ -196,13 +206,19 @@ function buildResponseSchema(business: BusinessConfig): Record<string, unknown> 
 	return {
 		type: "object",
 		additionalProperties: false,
-		required: ["intent"],
+		required: ["intent", "conversationAction"],
 		properties: {
 			intent: {
 				type: "string",
 				enum: getIntentValues(),
 				description:
 					"The active customer request. Continue the previous intent when the latest message answers a receptionist question.",
+			},
+			conversationAction: {
+				type: "string",
+				enum: getConversationActionValues(),
+				description:
+					"Whether to continue normally, reject all offered appointment times, or require one exact requested time.",
 			},
 			customerName: { type: "string" },
 			contactPhone: {
@@ -281,6 +297,13 @@ function parseInterpretedMessage(text: string, business: BusinessConfig): Interp
 	}
 
 	const interpreted: InterpretedMessage = { intent };
+	const conversationAction = readConversationAction(value.conversationAction);
+	if (value.conversationAction !== undefined && !conversationAction) {
+		throw new MessageInterpreterError("Gemini returned an unsupported conversation action");
+	}
+	if (conversationAction && conversationAction !== "continue") {
+		interpreted.conversationAction = conversationAction;
+	}
 	const customerName = readOptionalText(value, "customerName");
 	const contactPhone = readOptionalPhone(value.contactPhone);
 	const petName = readOptionalText(value, "petName");
@@ -367,6 +390,13 @@ function readIntent(value: unknown): ReceptionistIntent | undefined {
 	}
 
 	return value;
+}
+
+function readConversationAction(value: unknown): ConversationAction | undefined {
+	if (value === undefined || value === null || value === "") return undefined;
+	if (typeof value !== "string") return undefined;
+
+	return getConversationActionValues().find((action) => action === value);
 }
 
 function readServiceId(value: unknown, business: BusinessConfig): ServiceId | undefined {
@@ -477,6 +507,10 @@ function getIntentValues(): ReceptionistIntent[] {
 		"complaint",
 		"unknown",
 	];
+}
+
+function getConversationActionValues(): ConversationAction[] {
+	return ["continue", "reject_suggested_times", "require_exact_time"];
 }
 
 function getComplaintCategoryValues(): ComplaintCategory[] {

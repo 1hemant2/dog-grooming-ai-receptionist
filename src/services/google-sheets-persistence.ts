@@ -208,6 +208,14 @@ export class GoogleSheetsCallLog implements CallLog {
 				this.business.sheets.spreadsheetId,
 				this.business.sheets.callLogTabName,
 			);
+			const dataRows = getDataRows(rows, EXT.googleSheets.callLog.headers);
+			const alreadyLogged = dataRows.some(
+				(row) =>
+					getCell(row, EXT.googleSheets.callLog.columns.conversationId) ===
+					entry.conversationId,
+			);
+
+			if (alreadyLogged) return;
 
 			if (rows.length === 0) {
 				await this.spreadsheetClient.appendRow(

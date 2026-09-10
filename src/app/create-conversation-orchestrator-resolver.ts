@@ -52,9 +52,11 @@ export function createConversationOrchestratorResolver(): (
 				callLog,
 				information,
 				booking,
+				availability,
 				management,
 				support,
 				ownerNotifier,
+				contacts,
 			}),
 		);
 	}

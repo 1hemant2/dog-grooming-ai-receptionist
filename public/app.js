@@ -77,6 +77,11 @@ class ReceptionistApp {
 			const result = await response.json();
 
 			if (!response.ok) {
+				if (response.status === 404 && this.conversationId) {
+					this.resetConversationView(true, "expired");
+					return;
+				}
+
 				throw new Error(result.error || "The receptionist could not process the request.");
 			}
 
@@ -118,14 +123,18 @@ class ReceptionistApp {
 		this.messageInput.focus();
 	}
 
-	resetConversationView(lockConversation) {
+	resetConversationView(lockConversation, lockedStatus = "ended") {
 		this.conversationLocked = lockConversation;
 		this.conversationId = null;
 		sessionStorage.removeItem(CONVERSATION_ID_KEY);
 		this.endConversationButton.disabled = true;
-		this.conversationIdLabel.textContent = "A conversation ID will appear here.";
-		this.status.textContent = "Ready";
-		this.status.dataset.status = "ready";
+		this.conversationIdLabel.textContent = lockConversation
+			? `Conversation ${lockedStatus}. Start a new conversation.`
+			: "A conversation ID will appear here.";
+		this.status.textContent = lockConversation ? lockedStatus : "Ready";
+		this.status.dataset.status = lockConversation ? lockedStatus : "ready";
+		this.messageInput.disabled = lockConversation;
+		this.sendButton.disabled = lockConversation;
 		this.messageInput.value = "";
 		this.conversationLog.replaceChildren();
 	}
@@ -153,6 +162,11 @@ class ReceptionistApp {
 			const result = await response.json();
 
 			if (!response.ok) {
+				if (response.status === 404) {
+					this.resetConversationView(true, "expired");
+					return;
+				}
+
 				throw new Error(result.error || "The conversation could not be ended.");
 			}
 

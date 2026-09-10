@@ -48,11 +48,19 @@ export class Conversation {
 	private expectedCustomerFieldValue: ExpectedCustomerField | undefined;
 	private outcomeValue: ConversationOutcome | undefined;
 	private ownerHandoffNotifiedValue = false;
+	private contactPersistedValue = false;
+	private alternativeSlotsOfferedValue = false;
+	private alternativeSlotsRejectedValue = false;
+	private lastActivityAtValue: Date;
 	private statusValue: ConversationStatus = "active";
 
-	constructor(details: ConversationDetails) {
+	constructor(details: ConversationDetails, lastActivityAt: Date = new Date()) {
 		if (details.id.trim().length === 0 || details.businessId.trim().length === 0) {
 			throw new InvalidConversationError("Conversation ID and business ID are required");
+		}
+
+		if (!Number.isFinite(lastActivityAt.getTime())) {
+			throw new InvalidConversationError("Conversation activity time must be valid");
 		}
 
 		if (details.callerPhone !== undefined && !isValidPhoneNumber(details.callerPhone)) {
@@ -67,6 +75,7 @@ export class Conversation {
 		this.businessId = details.businessId;
 		this.callerPhoneValue = details.callerPhone;
 		this.contactPhoneValue = details.contactPhone;
+		this.lastActivityAtValue = new Date(lastActivityAt);
 	}
 
 	get callerPhone(): string | undefined {
@@ -103,6 +112,22 @@ export class Conversation {
 
 	get ownerHandoffNotified(): boolean {
 		return this.ownerHandoffNotifiedValue;
+	}
+
+	get contactPersisted(): boolean {
+		return this.contactPersistedValue;
+	}
+
+	get alternativeSlotsOffered(): boolean {
+		return this.alternativeSlotsOfferedValue;
+	}
+
+	get alternativeSlotsRejected(): boolean {
+		return this.alternativeSlotsRejectedValue;
+	}
+
+	get lastActivityAt(): Date {
+		return new Date(this.lastActivityAtValue);
 	}
 
 	associateCallerPhone(callerPhone: string): void {
@@ -150,31 +175,78 @@ export class Conversation {
 
 	updateActiveRequest(interpretedMessage: InterpretedMessage): InterpretedMessage {
 		this.requireActive("update the active request for");
+		const requestFacts = { ...interpretedMessage };
+		delete requestFacts.conversationAction;
 
 		const previousRequest = this.activeRequestValue;
 		const continuesPreviousRequest =
 			(previousRequest !== undefined &&
-				interpretedMessage.intent === previousRequest.intent &&
+				requestFacts.intent === previousRequest.intent &&
 				(this.outcomeValue?.status === "needs_information" ||
 					previousRequest.intent === "pricing")) ||
-			(interpretedMessage.intent === "unknown" &&
+			(requestFacts.intent === "unknown" &&
 				this.outcomeValue?.status === "needs_information");
 
 		if (previousRequest && continuesPreviousRequest) {
 			this.activeRequestValue = {
 				...previousRequest,
-				...interpretedMessage,
+				...requestFacts,
 				intent:
-					interpretedMessage.intent === "unknown"
+					requestFacts.intent === "unknown"
 						? previousRequest.intent
-						: interpretedMessage.intent,
+						: requestFacts.intent,
 			};
 		} else {
-			this.activeRequestValue = { ...interpretedMessage };
+			this.activeRequestValue = requestFacts;
 		}
 
 		this.expectedCustomerFieldValue = undefined;
 		return { ...this.activeRequestValue };
+	}
+
+	resetActiveRequest(): void {
+		this.requireActive("reset the active request for");
+		this.activeRequestValue = undefined;
+		this.expectedCustomerFieldValue = undefined;
+		this.outcomeValue = undefined;
+		this.alternativeSlotsOfferedValue = false;
+		this.alternativeSlotsRejectedValue = false;
+	}
+
+	clearRequestedAppointmentSlot(): void {
+		this.requireActive("clear the requested appointment slot for");
+
+		if (this.activeRequestValue) {
+			const requestWithoutSlot = { ...this.activeRequestValue };
+			delete requestWithoutSlot.requestedDate;
+			delete requestWithoutSlot.requestedTime;
+			delete requestWithoutSlot.confirmation;
+			this.activeRequestValue = requestWithoutSlot;
+		}
+
+		this.expectedCustomerFieldValue = undefined;
+	}
+
+	markAlternativeSlotsOffered(): void {
+		this.requireActive("mark alternative slots for");
+		this.alternativeSlotsOfferedValue = true;
+		this.alternativeSlotsRejectedValue = false;
+	}
+
+	clearAlternativeSlotsOffered(): void {
+		this.requireActive("clear alternative slots for");
+		this.alternativeSlotsOfferedValue = false;
+	}
+
+	markAlternativeSlotsRejected(): void {
+		this.requireActive("mark alternative slots as rejected for");
+		this.alternativeSlotsOfferedValue = false;
+		this.alternativeSlotsRejectedValue = true;
+	}
+
+	clearAlternativeSlotsRejected(): void {
+		this.requireActive("clear rejected alternative slots for");
+		this.alternativeSlotsRejectedValue = false;
 	}
 
 	expectCustomerField(field: ExpectedCustomerField): void {
@@ -190,6 +262,33 @@ export class Conversation {
 	markOwnerHandoffNotified(): void {
 		this.requireActive("mark the owner handoff for");
 		this.ownerHandoffNotifiedValue = true;
+	}
+
+	markContactPersisted(): void {
+		this.requireActive("mark the contact as persisted for");
+		this.contactPersistedValue = true;
+	}
+
+	markActivity(activityAt: Date): void {
+		this.requireActive("record activity for");
+
+		if (!Number.isFinite(activityAt.getTime())) {
+			throw new InvalidConversationError("Conversation activity time must be valid");
+		}
+
+		this.lastActivityAtValue = new Date(activityAt);
+	}
+
+	isInactive(now: Date, idleTimeoutMs: number): boolean {
+		if (!Number.isFinite(now.getTime())) {
+			throw new InvalidConversationError("Conversation activity time must be valid");
+		}
+
+		if (!Number.isFinite(idleTimeoutMs) || idleTimeoutMs <= 0) {
+			throw new InvalidConversationError("Conversation idle timeout must be positive");
+		}
+
+		return now.getTime() - this.lastActivityAtValue.getTime() >= idleTimeoutMs;
 	}
 
 	recordOutcome(outcome: ConversationOutcome): void {
@@ -219,6 +318,8 @@ export class InMemoryConversationStore {
 	private readonly conversations = new Map<string, Conversation>();
 	private readonly endedConversationIds = new Set<string>();
 
+	constructor(private readonly clock: () => Date = () => new Date()) {}
+
 	// Start a conversation for a new ID, or append to the existing conversation.
 	receiveMessage(input: ReceiveMessageInput): string {
 		let conversationId = input.conversationId;
@@ -244,7 +345,7 @@ export class InMemoryConversationStore {
 			conversationDetails.callerPhone = input.callerPhone;
 		}
 
-		const conversation = new Conversation(conversationDetails);
+		const conversation = new Conversation(conversationDetails, this.clock());
 		conversation.addMessage("customer", input.message);
 		this.conversations.set(conversationId, conversation);
 
@@ -291,6 +392,16 @@ export class InMemoryConversationStore {
 		const conversation = this.getConversation(lookupInput);
 
 		conversation.addMessage("customer", input.message);
+		conversation.markActivity(this.clock());
 		return conversation.id;
+	}
+
+	getInactiveConversations(
+		idleTimeoutMs: number,
+		now: Date = this.clock(),
+	): readonly Conversation[] {
+		return [...this.conversations.values()].filter((conversation) =>
+			conversation.isInactive(now, idleTimeoutMs),
+		);
 	}
 }
