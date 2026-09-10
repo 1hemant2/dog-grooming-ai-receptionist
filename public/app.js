@@ -15,6 +15,7 @@ class ReceptionistApp {
 		this.status = document.querySelector("#request-status");
 		this.conversationIdLabel = document.querySelector("#conversation-id");
 		this.conversationId = sessionStorage.getItem(CONVERSATION_ID_KEY);
+		this.conversationLocked = false;
 
 		this.form.addEventListener("submit", this.sendMessage.bind(this));
 		this.messageInput.addEventListener("keydown", this.handleMessageKeydown.bind(this));
@@ -46,6 +47,10 @@ class ReceptionistApp {
 
 	async sendMessage(event) {
 		event.preventDefault();
+
+		if (this.conversationLocked) {
+			return;
+		}
 
 		const message = this.messageInput.value.trim();
 
@@ -104,19 +109,25 @@ class ReceptionistApp {
 	}
 
 	startNewConversation() {
-		this.conversationId = null;
-		sessionStorage.removeItem(CONVERSATION_ID_KEY);
-		this.endConversationButton.disabled = true;
-		this.conversationIdLabel.textContent = "A conversation ID will appear here.";
-		this.status.textContent = "Ready";
-		this.status.dataset.status = "ready";
-		this.conversationLog.replaceChildren();
+		this.resetConversationView(false);
 		this.addMessage(
 			"Receptionist",
 			"Hello! How can I help with your dog’s grooming today?",
 			"receptionist-message",
 		);
 		this.messageInput.focus();
+	}
+
+	resetConversationView(lockConversation) {
+		this.conversationLocked = lockConversation;
+		this.conversationId = null;
+		sessionStorage.removeItem(CONVERSATION_ID_KEY);
+		this.endConversationButton.disabled = true;
+		this.conversationIdLabel.textContent = "A conversation ID will appear here.";
+		this.status.textContent = "Ready";
+		this.status.dataset.status = "ready";
+		this.messageInput.value = "";
+		this.conversationLog.replaceChildren();
 	}
 
 	async endConversation() {
@@ -145,16 +156,7 @@ class ReceptionistApp {
 				throw new Error(result.error || "The conversation could not be ended.");
 			}
 
-			this.addMessage(
-				"System",
-				"Conversation ended and saved to the Call Log.",
-				"system-message",
-			);
-			this.conversationId = null;
-			sessionStorage.removeItem(CONVERSATION_ID_KEY);
-			this.endConversationButton.disabled = true;
-			this.conversationIdLabel.textContent = "Conversation ended.";
-			this.setStatus(result.status);
+			this.resetConversationView(true);
 		} catch (error) {
 			this.setStatus("error");
 			this.addMessage(
@@ -169,6 +171,10 @@ class ReceptionistApp {
 	}
 
 	selectScenario(event) {
+		if (this.conversationLocked) {
+			return;
+		}
+
 		const button = event.target.closest("button[data-prompt]");
 
 		if (!button) {
@@ -204,8 +210,8 @@ class ReceptionistApp {
 	}
 
 	setLoading(isLoading) {
-		this.sendButton.disabled = isLoading;
-		this.messageInput.disabled = isLoading;
+		this.sendButton.disabled = isLoading || this.conversationLocked;
+		this.messageInput.disabled = isLoading || this.conversationLocked;
 		this.endConversationButton.disabled = isLoading || !this.conversationId;
 		this.form.setAttribute("aria-busy", String(isLoading));
 
