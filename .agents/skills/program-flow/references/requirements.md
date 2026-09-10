@@ -41,6 +41,7 @@ Build a text-based AI receptionist for Maple Street Dog Grooming. It should hand
 - The UI sends the business ID as trusted request metadata, not as customer-written message content.
 - After the first response, the UI stores the returned `conversationId` and sends it with later messages.
 - The UI displays the conversation replies and request status so the main Phase 1 flows can be demonstrated manually.
+- Pressing Enter sends the message. Shift+Enter inserts a new line in the message box.
 - The UI does not contain business rules; it only collects input, calls the API, and displays results.
 
 ## Business defaults

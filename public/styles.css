@@ -177,6 +177,25 @@ input:disabled {
 .scenario-list {
 	margin-top: auto;
 	padding-top: 2rem;
+	max-height: 25rem;
+	overflow-y: auto;
+}
+
+.scenario-group {
+	margin-bottom: 1rem;
+}
+
+.scenario-group:last-child {
+	margin-bottom: 0;
+}
+
+.scenario-group-label {
+	margin: 0 0 0.45rem;
+	color: #8edbd4;
+	font-size: 0.72rem;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
 }
 
 .scenario-list button {
@@ -380,6 +399,7 @@ textarea {
 	.scenario-list {
 		margin-top: 0;
 		padding-top: 1.5rem;
+		max-height: none;
 	}
 
 	.conversation-panel {

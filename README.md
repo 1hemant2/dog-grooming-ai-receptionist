@@ -41,7 +41,7 @@ The complete setup and scenario walkthrough is in [docs/demo.md](docs/demo.md).
 | ----------------------- | -------- | -------------------------------------------------------- |
 | `PORT`                  | No       | HTTP port; defaults to `3000`                            |
 | `GEMINI_API_KEY`        | Yes      | Authenticates Gemini requests                            |
-| `GEMINI_MODEL`          | No       | Gemini model; defaults to `gemini-2.5-flash`             |
+| `GEMINI_MODEL`          | No       | Gemini model; defaults to `gemini-3.5-flash`             |
 | `GOOGLE_CLIENT_EMAIL`   | Yes      | Google service-account email                             |
 | `GOOGLE_PRIVATE_KEY`    | Yes      | Service-account private key with newlines stored as `\n` |
 | `GOOGLE_SPREADSHEET_ID` | Yes      | Spreadsheet containing `Contacts` and `Call Log`         |

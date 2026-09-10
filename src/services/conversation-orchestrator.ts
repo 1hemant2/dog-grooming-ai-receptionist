@@ -91,11 +91,13 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 				conversation,
 			);
 		} catch (error) {
-			console.error("Message interpretation failed.", {
+			const errorMessage = error instanceof Error ? error.message : String(error);
+			console.error(`Message interpretation failed: ${errorMessage}`, {
 				businessId: conversation.businessId,
 				conversationId: conversation.id,
 				outcomeStatus: "needs_information",
 				errorName: error instanceof Error ? error.constructor.name : "UnknownError",
+				errorMessage,
 			});
 			return this.finish(
 				conversation,

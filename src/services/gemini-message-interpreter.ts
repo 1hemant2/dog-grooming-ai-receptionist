@@ -57,7 +57,10 @@ export class GeminiMessageInterpreter implements MessageInterpreter {
 				},
 			});
 		} catch (error) {
-			throw new MessageInterpreterError("Gemini interpretation failed", { cause: error });
+			const reason = error instanceof Error ? `: ${error.message}` : "";
+			throw new MessageInterpreterError(`Gemini interpretation failed${reason}`, {
+				cause: error,
+			});
 		}
 
 		if (!response.text || response.text.trim().length === 0) {

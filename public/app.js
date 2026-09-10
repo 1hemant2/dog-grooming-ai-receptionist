@@ -18,6 +18,7 @@ class ReceptionistDemo {
 		this.conversationId = sessionStorage.getItem(CONVERSATION_ID_KEY);
 
 		this.form.addEventListener("submit", this.sendMessage.bind(this));
+		this.messageInput.addEventListener("keydown", this.handleMessageKeydown.bind(this));
 		this.newConversationButton.addEventListener("click", this.startNewConversation.bind(this));
 		this.scenarioList.addEventListener("click", this.selectScenario.bind(this));
 
@@ -34,6 +35,18 @@ class ReceptionistDemo {
 		if (this.conversationId) {
 			this.callerPhoneInput.disabled = true;
 			this.conversationIdLabel.textContent = `Conversation: ${this.conversationId}`;
+		}
+	}
+
+	handleMessageKeydown(event) {
+		if (event.key !== "Enter" || event.shiftKey || event.isComposing) {
+			return;
+		}
+
+		event.preventDefault();
+
+		if (!this.sendButton.disabled) {
+			this.form.requestSubmit();
 		}
 	}
 

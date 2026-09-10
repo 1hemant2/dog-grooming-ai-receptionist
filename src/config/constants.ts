@@ -4,7 +4,7 @@ const DEFAULT_PORT = 3000;
 const DEFAULT_BUSINESS_ID = "maple-street-dog-grooming";
 const DEFAULT_SPREADSHEET_ID = DEFAULT_BUSINESS_ID;
 const DEFAULT_CALENDAR_ID = DEFAULT_BUSINESS_ID;
-const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
+const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash";
 
 export const EXT = {
 	googleapis: {
@@ -53,7 +53,7 @@ export const APPLICATION_CONFIG = {
 	maxRequestBytes: 16_384,
 	maxMessageCharacters: 4_000,
 	maxConversationIdCharacters: 128,
-	externalRequestTimeoutMs: 10_000,
+	externalRequestTimeoutMs: 30_000,
 };
 
 export const APPLICATION_PATTERNS = {
