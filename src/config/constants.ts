@@ -13,6 +13,12 @@ export const EXT = {
 			calendarScope: "/auth/calendar.events",
 		},
 	},
+	telegram: {
+		baseUrl: "https://api.telegram.org",
+		paths: {
+			sendMessage: "/sendMessage",
+		},
+	},
 	googleSheets: {
 		contacts: {
 			headers: ["contactPhone", "customerName", "pets", "notes", "lastContactAt"],
@@ -131,6 +137,20 @@ export function getGoogleServiceAccountCredentials(): {
 	}
 
 	return { clientEmail, privateKey };
+}
+
+export function getTelegramOwnerNotificationConfig(): {
+	botToken: string;
+	chatId: string;
+} {
+	const botToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
+	const chatId = process.env.TELEGRAM_CHAT_ID?.trim();
+
+	if (!botToken || !chatId) {
+		throw new Error("TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are required");
+	}
+
+	return { botToken, chatId };
 }
 
 function getSpreadsheetId(): string {

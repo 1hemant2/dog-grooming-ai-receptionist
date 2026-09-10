@@ -22,7 +22,7 @@ This is the implementation backlog for Phase 1. The approved behavior remains in
 - [x] T05 — Calendar availability
 - [x] T06 — Appointment booking
 - [x] T07 — Appointment lookup, rescheduling, and cancellation
-- [ ] T08 — Late arrivals, complaints, and human handoff
+- [x] T08 — Late arrivals, complaints, and human handoff
 - [ ] T09 — LLM interpretation and conversation orchestration
 - [ ] T10 — Reliability and safety checks
 - [ ] T11 — Demo data, end-to-end verification, and documentation
@@ -179,21 +179,23 @@ Complete when:
 
 ## T08 — Late arrivals, complaints, and human handoff
 
-Status: Pending
+Status: Complete
 
 Goal: Handle cases that require notification or human judgment.
 
 Decision:
 
-- Choose the Phase 1 owner-notification mechanism.
+- Use the Telegram Bot API through the injected `OwnerNotifier` boundary.
+- Read the Telegram bot token and target chat ID from central application configuration.
 
 Complete when:
 
 - Delays under 15 minutes are recorded and sent to the owner.
 - Delays of 15 minutes or more become `needs_human`.
+- Routine operational complaints with a deterministic answer are handled by the agent and recorded as completed.
 - Refund and charge decisions always go to a human.
 - Safety, injury, aggression, and compensation complaints receive immediate handoff.
-- Other complaints create an owner callback request.
+- Other unresolved complaints create an owner callback request.
 - Responses acknowledge concerns without promising fault, refunds, or outcomes.
 
 ## T09 — LLM interpretation and conversation orchestration

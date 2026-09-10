@@ -64,6 +64,7 @@ Build a text-based AI receptionist for Maple Street Dog Grooming. It should hand
 - Dogs from 71 to 100 lb add 30 minutes to the service duration. Dogs over 100 lb require human review.
 - Aggression, severe anxiety, active illness, or injury requires human review.
 - Phase 1 handoff records `needs_human` in the Call Log and tells the customer that the owner will call back.
+- Phase 1 owner notifications use the Telegram Bot API. The bot token and target chat ID come from application configuration and are never hard-coded or accepted from customer messages.
 - Availability searches cover the next seven days. If no suitable slot exists, ask for another date range or create a callback request.
 
 ## Shared conversation lifecycle
@@ -156,9 +157,10 @@ If a required lookup fails, the receptionist must not guess. It should explain t
 ### Other complaint
 
 1. Record the complaint and relevant customer details in Sheets.
-2. Acknowledge the complaint without promising an outcome.
-3. Hand off safety concerns, injuries, aggressive behavior, or requests for compensation immediately.
-4. For other complaints, record a callback request for the business owner.
+2. If the complaint is a routine operational concern with a clear, known response, answer it and record the conversation as completed without a callback.
+3. Acknowledge unresolved complaints without promising an outcome.
+4. Hand off safety concerns, injuries, aggressive behavior, or requests for compensation immediately.
+5. For other unresolved complaints, record a callback request for the business owner.
 
 ## Sheets records
 
