@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<meta
+			name="description"
+			content="Text conversation demo for the Maple Street Dog Grooming AI receptionist."
+		/>
+		<title>Maple Street Receptionist</title>
+		<link rel="stylesheet" href="/styles.css" />
+	</head>
+	<body>
+		<main class="workspace">
+			<aside class="demo-panel" aria-labelledby="demo-title">
+				<div class="business-mark" aria-hidden="true">MS</div>
+				<div>
+					<p class="eyebrow">Phase 1 demo</p>
+					<h1 id="demo-title">Maple Street<br />Receptionist</h1>
+				</div>
+
+				<label class="field-label" for="caller-phone"
+					>Caller phone <span>optional</span></label
+				>
+				<input
+					id="caller-phone"
+					type="tel"
+					inputmode="tel"
+					placeholder="+14155550100"
+					autocomplete="tel"
+				/>
+				<p class="field-note">
+					Use E.164 format. The number is locked after the conversation starts.
+				</p>
+
+				<button id="new-conversation" class="secondary-button" type="button">
+					Start new conversation
+				</button>
+
+				<div class="scenario-list" id="scenario-list">
+					<p class="field-label">Try a request</p>
+					<button type="button" data-prompt="What services do you offer?">
+						Services
+					</button>
+					<button type="button" data-prompt="How much does a full groom cost?">
+						Pricing
+					</button>
+					<button type="button" data-prompt="Are you open on Sunday?">Hours</button>
+					<button type="button" data-prompt="Do you groom large golden retrievers?">
+						Suitability
+					</button>
+				</div>
+			</aside>
+
+			<section class="conversation-panel" aria-labelledby="conversation-title">
+				<header class="conversation-header">
+					<div>
+						<p class="eyebrow">Text channel</p>
+						<h2 id="conversation-title">Customer conversation</h2>
+					</div>
+					<span id="request-status" class="status-badge">Ready</span>
+				</header>
+
+				<div id="conversation-log" class="conversation-log" aria-live="polite">
+					<article class="message receptionist-message">
+						<p class="message-author">Receptionist</p>
+						<p>Hello! How can I help with your dog’s grooming today?</p>
+					</article>
+				</div>
+
+				<form id="message-form" class="message-form">
+					<label class="sr-only" for="message">Message</label>
+					<textarea
+						id="message"
+						name="message"
+						rows="2"
+						maxlength="4000"
+						placeholder="Ask about services, hours, or an appointment…"
+						required
+					></textarea>
+					<button id="send-message" class="send-button" type="submit">Send</button>
+				</form>
+				<p id="conversation-id" class="conversation-id">
+					A conversation ID will appear here.
+				</p>
+			</section>
+		</main>
+
+		<script src="/app.js" defer></script>
+	</body>
+</html>

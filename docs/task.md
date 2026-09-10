@@ -25,7 +25,7 @@ This is the implementation backlog for Phase 1. The approved behavior remains in
 - [x] T08 — Late arrivals, complaints, and human handoff
 - [x] T09 — LLM interpretation and conversation orchestration
 - [x] T10 — Reliability and safety checks
-- [ ] T11 — Demo data, end-to-end verification, and documentation
+- [~] T11 — Demo data, end-to-end verification, and documentation
 
 ## T00 — Repository foundation
 
@@ -242,9 +242,18 @@ Complete when:
 
 ## T11 — Demo data, end-to-end verification, and documentation
 
-Status: Pending
+Status: In progress
 
 Goal: Deliver a reproducible Phase 1 demonstration.
+
+Decisions:
+
+- Serve a dependency-free browser UI from the existing Express application.
+- Keep demo Calendar events and Sheet rows as manually prepared demo data so the reviewer can see the live records.
+
+Pending live verification:
+
+- Prepare the demo Calendar events and Sheet rows, then record the Phase 1 walkthrough.
 
 Complete when:
 

@@ -32,6 +32,25 @@ test("reports that the service is healthy", async () => {
 	});
 });
 
+test("serves the browser conversation demo", async () => {
+	const response = await fetch(baseUrl);
+	const page = await response.text();
+
+	assert.equal(response.status, 200);
+	assert.match(response.headers.get("content-type") ?? "", /text\/html/);
+	assert.match(page, /Maple Street/);
+	assert.match(page, /id="message-form"/);
+});
+
+test("serves the browser demo script", async () => {
+	const response = await fetch(`${baseUrl}/app.js`);
+	const script = await response.text();
+
+	assert.equal(response.status, 200);
+	assert.match(response.headers.get("content-type") ?? "", /javascript/);
+	assert.match(script, /\/conversations\/messages/);
+});
+
 test("returns JSON for unknown routes", async () => {
 	const response = await fetch(`${baseUrl}/missing`);
 

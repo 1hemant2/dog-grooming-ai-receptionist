@@ -14,6 +14,7 @@ export function createHttpApp(
 	app.use(express.json({ limit: APPLICATION_CONFIG.maxRequestBytes }));
 	app.get("/health", handleHealthCheck);
 	app.use("/conversations", createConversationRouter(conversationStore, resolveOrchestrator));
+	app.use(express.static("public"));
 	app.use(handleNotFound);
 	app.use(handleExpressError);
 
