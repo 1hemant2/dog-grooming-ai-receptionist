@@ -1,6 +1,6 @@
-# Phase 1 Tasks
+# Implementation Tasks
 
-This is the implementation backlog for Phase 1. The approved behavior remains in
+This is the implementation backlog. The approved Phase 1 behavior remains in
 `.agents/skills/program-flow/references/requirements.md`.
 
 ## Working agreement
@@ -26,6 +26,10 @@ This is the implementation backlog for Phase 1. The approved behavior remains in
 - [x] T09 — LLM interpretation and conversation orchestration
 - [x] T10 — Reliability and safety checks
 - [~] T11 — Demo data, end-to-end verification, and documentation
+- [ ] T12 — Vapi contract, configuration, and security
+- [ ] T13 — Vapi conversation turn adapter
+- [ ] T14 — Vapi call lifecycle and delivery safety
+- [ ] T15 — Voice end-to-end verification and documentation
 
 ## T00 — Repository foundation
 
@@ -264,3 +268,98 @@ Complete when:
 - Setup, environment variables, architecture, assumptions, and demo commands are documented.
 - A clean install passes formatting, linting, type checking, tests, and build.
 - The final diff contains no secrets, generated output, dead code, or unfinished placeholders.
+
+## Phase 2 direction
+
+- Vapi owns telephony, speech-to-text, and text-to-speech.
+- Add Vapi at the transport boundary. Keep the conversation orchestrator, business services, Calendar, Sheets, and Telegram integrations unchanged.
+- Use the Vapi call ID as the stable external conversation ID.
+- Resolve the business from trusted Vapi phone-number or assistant metadata, never from caller speech.
+- Treat the caller's phone number as `callerPhone` channel metadata. Continue to collect and confirm `contactPhone` before customer-specific operations.
+
+## T12 — Vapi contract, configuration, and security
+
+Status: Pending
+
+Goal: Define and secure the boundary between Vapi and the application.
+
+Decisions to confirm before implementation:
+
+- Use a Vapi custom-LLM endpoint so the current backend remains the dialogue engine, or use Vapi's model with backend tools.
+- Decide whether Phase 2 demonstrates an inbound phone call, a browser-based Vapi call, or both.
+- Choose the public HTTPS deployment or tunnel used by Vapi during development.
+- Choose the Vapi request authentication method and required environment variables.
+
+Complete when:
+
+- Accepted Vapi request types and response shapes are represented with small application-owned types.
+- Vapi credentials and trusted identity mappings are read through central application configuration.
+- Requests are authenticated before their payload is processed.
+- Call ID, caller number, and called number or assistant identity are validated and converted into trusted conversation context.
+- Unknown businesses, malformed payloads, missing call IDs, and unauthenticated requests return controlled errors without invoking the orchestrator.
+- Tests cover valid and invalid configuration, authentication, and identity mapping.
+
+## T13 — Vapi conversation turn adapter
+
+Status: Pending
+
+Goal: Pass each caller utterance to the existing conversation handler and return its reply to Vapi.
+
+Expected flow:
+
+1. Vapi sends trusted call metadata containing the call ID, caller number, and called number or assistant identity.
+2. The adapter resolves the business and creates or resumes the matching conversation.
+3. Each final customer utterance is passed to the existing conversation handler.
+4. The adapter returns the receptionist reply in the response format expected by Vapi.
+5. Existing services continue to perform availability, booking, rescheduling, cancellation, persistence, and owner notification.
+
+Complete when:
+
+- The existing text UI and `POST /conversations/messages` contract continue to work unchanged.
+- Interpretation and provider failures produce a safe voice response without exposing internal errors.
+- Timing logs include safe call and duration metadata without transcripts, phone numbers, credentials, or complete provider payloads.
+- Adapter tests cover multi-turn state, response formatting, and provider failures.
+
+## T14 — Vapi call lifecycle and delivery safety
+
+Status: Pending
+
+Goal: Finalize calls reliably despite retries, duplicate events, and overlapping requests.
+
+Expected flow:
+
+1. Events for one Vapi call are processed in order.
+2. Duplicate utterances or tool calls reuse the existing result instead of repeating business actions.
+3. When Vapi reports that the call ended, allow any in-progress turn to finish.
+4. Finalize the existing conversation once so the Call Log is written.
+5. Remove in-memory conversation state only after final persistence succeeds.
+
+Failure behavior:
+
+- A duplicate end-of-call event does not create another Call Log row.
+- A failed Call Log write preserves conversation state for retry or human review.
+- An end event cannot remove state while a turn or Calendar action is still processing.
+- Calendar writes retain the existing duplicate-operation and partial-failure protections.
+
+Complete when:
+
+- Call termination writes one final Call Log row and removes conversation state without duplicate finalization.
+- Tests cover duplicate delivery, event ordering, overlapping turns, repeated end events, and persistence failures.
+- Existing browser idle cleanup and explicit end-conversation behavior still work.
+
+## T15 — Voice end-to-end verification and documentation
+
+Status: Pending
+
+Goal: Deliver a reproducible Vapi voice demonstration using the completed backend integration.
+
+Complete when:
+
+- Vapi can conduct a multi-turn voice conversation using the existing receptionist behavior.
+- At least one voice booking, rescheduling, and cancellation reaches the existing Calendar and Sheets integrations.
+- A human-handoff case sends the existing Telegram owner notification.
+- Ending the call produces one Call Log row containing the handled intents and final outcome.
+- Turn latency and failure behavior are observed with safe operational logs.
+- Setup documentation explains the Vapi assistant, phone or browser-call configuration, authentication, required environment variables, public HTTPS tunnel or deployment, and demonstration flow.
+- No credentials, transcripts, recordings, phone numbers, or generated artifacts are committed.
+- Formatting, linting, type checking, tests, and build pass.
