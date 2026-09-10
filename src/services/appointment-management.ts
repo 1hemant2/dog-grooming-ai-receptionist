@@ -76,9 +76,28 @@ export class AppointmentCalendarError extends AppointmentManagementError {}
 
 export class AppointmentPersistenceError extends AppointmentManagementError {}
 
-export class OwnerNotificationError extends AppointmentManagementError {}
+export class AppointmentChangePersistenceError extends AppointmentManagementError {
+	readonly appointmentId: string;
+
+	constructor(message: string, appointmentId: string, options?: ErrorOptions) {
+		super(message, options);
+		this.appointmentId = appointmentId;
+	}
+}
+
+export class OwnerNotificationError extends AppointmentManagementError {
+	readonly appointmentId: string;
+
+	constructor(message: string, appointmentId: string, options?: ErrorOptions) {
+		super(message, options);
+		this.appointmentId = appointmentId;
+	}
+}
 
 export class AppointmentManagementService {
+	private readonly rescheduleOperations = new Map<string, Promise<Appointment>>();
+	private readonly cancellationOperations = new Map<string, Promise<void>>();
+
 	constructor(
 		private readonly business: BusinessConfig,
 		private readonly appointmentCalendar: AppointmentCalendar,
@@ -125,6 +144,26 @@ export class AppointmentManagementService {
 			);
 		}
 
+		const operationKey = [
+			request.businessId,
+			request.conversationId,
+			request.appointmentId,
+			request.newStartAt,
+			request.newEndAt,
+		].join(":");
+		const existingOperation = this.rescheduleOperations.get(operationKey);
+
+		if (existingOperation) {
+			return existingOperation;
+		}
+
+		const operation = this.performReschedule(request);
+		this.rescheduleOperations.set(operationKey, operation);
+
+		return operation;
+	}
+
+	private async performReschedule(request: RescheduleAppointmentRequest): Promise<Appointment> {
 		const newSlot = new AppointmentSlot(request.newStartAt, request.newEndAt);
 		const currentAppointment = await this.findConfirmedAppointment(request);
 		this.ensureAppointmentCanChange(currentAppointment.appointment);
@@ -170,6 +209,25 @@ export class AppointmentManagementService {
 			);
 		}
 
+		const operationKey = [
+			request.businessId,
+			request.conversationId,
+			request.appointmentId,
+			"cancel",
+		].join(":");
+		const existingOperation = this.cancellationOperations.get(operationKey);
+
+		if (existingOperation) {
+			return existingOperation;
+		}
+
+		const operation = this.performCancellation(request);
+		this.cancellationOperations.set(operationKey, operation);
+
+		return operation;
+	}
+
+	private async performCancellation(request: CancelAppointmentRequest): Promise<void> {
 		const currentAppointment = await this.findConfirmedAppointment(request);
 		this.ensureAppointmentCanChange(currentAppointment.appointment);
 
@@ -326,8 +384,9 @@ export class AppointmentManagementService {
 				...(request.callerPhone ? { callerPhone: request.callerPhone } : {}),
 			});
 		} catch (error) {
-			throw new AppointmentPersistenceError(
+			throw new AppointmentChangePersistenceError(
 				"Calendar changed, but contact or Call Log persistence failed",
+				appointment.id,
 				{ cause: error },
 			);
 		}
@@ -337,6 +396,7 @@ export class AppointmentManagementService {
 		} catch (error) {
 			throw new OwnerNotificationError(
 				"Calendar changed and was logged, but owner notification failed",
+				appointment.id,
 				{ cause: error },
 			);
 		}

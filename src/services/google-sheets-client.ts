@@ -1,6 +1,10 @@
 import { google } from "googleapis";
 
-import { EXT, getGoogleServiceAccountCredentials } from "../config/constants.js";
+import {
+	APPLICATION_CONFIG,
+	EXT,
+	getGoogleServiceAccountCredentials,
+} from "../config/constants.js";
 import type { SpreadsheetClient, SpreadsheetRow } from "./google-sheets-persistence.js";
 
 const SHEET_COLUMN_RANGE = "A:ZZ";
@@ -14,10 +18,13 @@ export class GoogleSheetsClient implements SpreadsheetClient {
 	}
 
 	async readRows(spreadsheetId: string, tabName: string): Promise<readonly SpreadsheetRow[]> {
-		const response = await this.sheetsApi.spreadsheets.values.get({
-			spreadsheetId,
-			range: `${quoteTabName(tabName)}!${SHEET_COLUMN_RANGE}`,
-		});
+		const response = await this.sheetsApi.spreadsheets.values.get(
+			{
+				spreadsheetId,
+				range: `${quoteTabName(tabName)}!${SHEET_COLUMN_RANGE}`,
+			},
+			{ timeout: APPLICATION_CONFIG.externalRequestTimeoutMs },
+		);
 		const values = response.data.values ?? [];
 
 		return values.map((row, index) => ({
@@ -31,13 +38,16 @@ export class GoogleSheetsClient implements SpreadsheetClient {
 		tabName: string,
 		values: readonly string[],
 	): Promise<void> {
-		await this.sheetsApi.spreadsheets.values.append({
-			spreadsheetId,
-			range: quoteTabName(tabName),
-			valueInputOption: "USER_ENTERED",
-			insertDataOption: "INSERT_ROWS",
-			requestBody: { values: [Array.from(values)] },
-		});
+		await this.sheetsApi.spreadsheets.values.append(
+			{
+				spreadsheetId,
+				range: quoteTabName(tabName),
+				valueInputOption: "USER_ENTERED",
+				insertDataOption: "INSERT_ROWS",
+				requestBody: { values: [Array.from(values)] },
+			},
+			{ timeout: APPLICATION_CONFIG.externalRequestTimeoutMs },
+		);
 	}
 
 	async updateRow(
@@ -50,12 +60,15 @@ export class GoogleSheetsClient implements SpreadsheetClient {
 			throw new Error("Cannot update a spreadsheet row without values");
 		}
 
-		await this.sheetsApi.spreadsheets.values.update({
-			spreadsheetId,
-			range: `${quoteTabName(tabName)}!A${rowNumber}:${getColumnName(values.length)}${rowNumber}`,
-			valueInputOption: "USER_ENTERED",
-			requestBody: { values: [Array.from(values)] },
-		});
+		await this.sheetsApi.spreadsheets.values.update(
+			{
+				spreadsheetId,
+				range: `${quoteTabName(tabName)}!A${rowNumber}:${getColumnName(values.length)}${rowNumber}`,
+				valueInputOption: "USER_ENTERED",
+				requestBody: { values: [Array.from(values)] },
+			},
+			{ timeout: APPLICATION_CONFIG.externalRequestTimeoutMs },
+		);
 	}
 }
 

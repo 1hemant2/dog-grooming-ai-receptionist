@@ -1,6 +1,10 @@
 import { google } from "googleapis";
 
-import { EXT, getGoogleServiceAccountCredentials } from "../config/constants.js";
+import {
+	APPLICATION_CONFIG,
+	EXT,
+	getGoogleServiceAccountCredentials,
+} from "../config/constants.js";
 import { Appointment, type AppointmentSlot } from "../models/appointment.js";
 import type { BusinessConfig, ServiceId } from "../models/business.js";
 import { localDateTimeToDate } from "./calendar-time.js";
@@ -33,16 +37,19 @@ export class GoogleCalendarClient
 		let pageToken: string | undefined;
 
 		do {
-			const response = await this.calendarApi.events.list({
-				calendarId: this.business.calendar.calendarId,
-				timeMin: request.timeMin,
-				timeMax: request.timeMax,
-				singleEvents: true,
-				orderBy: "startTime",
-				showDeleted: false,
-				timeZone: this.business.timezone,
-				...(pageToken ? { pageToken } : {}),
-			});
+			const response = await this.calendarApi.events.list(
+				{
+					calendarId: this.business.calendar.calendarId,
+					timeMin: request.timeMin,
+					timeMax: request.timeMax,
+					singleEvents: true,
+					orderBy: "startTime",
+					showDeleted: false,
+					timeZone: this.business.timezone,
+					...(pageToken ? { pageToken } : {}),
+				},
+				{ timeout: APPLICATION_CONFIG.externalRequestTimeoutMs },
+			);
 
 			for (const event of response.data.items ?? []) {
 				if (event.status === "cancelled") {
@@ -76,31 +83,34 @@ export class GoogleCalendarClient
 			throw new Error("Appointment service is not configured for this business");
 		}
 
-		const response = await this.calendarApi.events.insert({
-			calendarId: this.business.calendar.calendarId,
-			requestBody: {
-				summary: `${service.name} for ${request.petName}`,
-				description: `Customer: ${request.customerName}\nContact: ${request.contactPhone}`,
-				//these details are not shared with each copy of events.
-				extendedProperties: {
-					private: {
-						businessId: this.business.id,
-						contactPhone: request.contactPhone,
-						customerName: request.customerName,
-						petName: request.petName,
-						serviceId: request.serviceId,
+		const response = await this.calendarApi.events.insert(
+			{
+				calendarId: this.business.calendar.calendarId,
+				requestBody: {
+					summary: `${service.name} for ${request.petName}`,
+					description: `Customer: ${request.customerName}\nContact: ${request.contactPhone}`,
+					//these details are not shared with each copy of events.
+					extendedProperties: {
+						private: {
+							businessId: this.business.id,
+							contactPhone: request.contactPhone,
+							customerName: request.customerName,
+							petName: request.petName,
+							serviceId: request.serviceId,
+						},
+					},
+					start: {
+						dateTime: request.startAt,
+						timeZone: this.business.timezone,
+					},
+					end: {
+						dateTime: request.endAt,
+						timeZone: this.business.timezone,
 					},
 				},
-				start: {
-					dateTime: request.startAt,
-					timeZone: this.business.timezone,
-				},
-				end: {
-					dateTime: request.endAt,
-					timeZone: this.business.timezone,
-				},
 			},
-		});
+			{ timeout: APPLICATION_CONFIG.externalRequestTimeoutMs },
+		);
 
 		const eventId = response.data.id;
 		const startAt = response.data.start?.dateTime;
@@ -128,18 +138,21 @@ export class GoogleCalendarClient
 		let pageToken: string | undefined;
 
 		do {
-			const response = await this.calendarApi.events.list({
-				calendarId: this.business.calendar.calendarId,
-				privateExtendedProperty: [
-					`businessId=${this.business.id}`,
-					`contactPhone=${contactPhone}`,
-				],
-				singleEvents: true, // merge recuring event into single event
-				orderBy: "startTime",
-				showDeleted: false,
-				timeZone: this.business.timezone,
-				...(pageToken ? { pageToken } : {}), // this keep sending all page event for this client
-			});
+			const response = await this.calendarApi.events.list(
+				{
+					calendarId: this.business.calendar.calendarId,
+					privateExtendedProperty: [
+						`businessId=${this.business.id}`,
+						`contactPhone=${contactPhone}`,
+					],
+					singleEvents: true, // merge recuring event into single event
+					orderBy: "startTime",
+					showDeleted: false,
+					timeZone: this.business.timezone,
+					...(pageToken ? { pageToken } : {}), // this keep sending all page event for this client
+				},
+				{ timeout: APPLICATION_CONFIG.externalRequestTimeoutMs },
+			);
 
 			for (const event of response.data.items ?? []) {
 				if (event.status === "cancelled") {
@@ -159,29 +172,35 @@ export class GoogleCalendarClient
 		appointmentId: string,
 		slot: AppointmentSlot,
 	): Promise<Appointment> {
-		const response = await this.calendarApi.events.patch({
-			calendarId: this.business.calendar.calendarId,
-			eventId: appointmentId,
-			requestBody: {
-				start: {
-					dateTime: slot.startAt,
-					timeZone: this.business.timezone,
-				},
-				end: {
-					dateTime: slot.endAt,
-					timeZone: this.business.timezone,
+		const response = await this.calendarApi.events.patch(
+			{
+				calendarId: this.business.calendar.calendarId,
+				eventId: appointmentId,
+				requestBody: {
+					start: {
+						dateTime: slot.startAt,
+						timeZone: this.business.timezone,
+					},
+					end: {
+						dateTime: slot.endAt,
+						timeZone: this.business.timezone,
+					},
 				},
 			},
-		});
+			{ timeout: APPLICATION_CONFIG.externalRequestTimeoutMs },
+		);
 
 		return toAppointment(response.data, this.business);
 	}
 
 	async cancelAppointment(appointmentId: string): Promise<void> {
-		await this.calendarApi.events.delete({
-			calendarId: this.business.calendar.calendarId,
-			eventId: appointmentId,
-		});
+		await this.calendarApi.events.delete(
+			{
+				calendarId: this.business.calendar.calendarId,
+				eventId: appointmentId,
+			},
+			{ timeout: APPLICATION_CONFIG.externalRequestTimeoutMs },
+		);
 	}
 
 	private ensureBusiness(businessId: string): void {

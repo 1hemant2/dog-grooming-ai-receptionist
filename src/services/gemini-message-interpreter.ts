@@ -1,7 +1,7 @@
 import { GoogleGenAI, type GenerateContentParameters } from "@google/genai";
 import { DateTime } from "luxon";
 
-import { APPLICATION_PATTERNS } from "../config/constants.js";
+import { APPLICATION_CONFIG, APPLICATION_PATTERNS } from "../config/constants.js";
 import type { BusinessConfig, ServiceId } from "../models/business.js";
 import type { Conversation } from "../models/conversation.js";
 import { isValidPhoneNumber } from "../models/customer.js";
@@ -47,6 +47,9 @@ export class GeminiMessageInterpreter implements MessageInterpreter {
 				model: this.config.model,
 				contents: buildPrompt(message, business, conversation),
 				config: {
+					httpOptions: {
+						timeout: APPLICATION_CONFIG.externalRequestTimeoutMs,
+					},
 					responseMimeType: "application/json",
 					responseJsonSchema: buildResponseSchema(business),
 					temperature: 0,

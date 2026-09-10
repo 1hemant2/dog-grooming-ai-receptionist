@@ -14,10 +14,12 @@ const config = {
 test("sends an owner notification through Telegram", async () => {
 	let requestUrl = "";
 	let requestBody = "";
+	let requestSignal: AbortSignal | null | undefined;
 
 	const fetcher: typeof fetch = async (input, init) => {
 		requestUrl = String(input);
 		requestBody = String(init?.body);
+		requestSignal = init?.signal;
 		return new Response(JSON.stringify({ ok: true }), { status: 200 });
 	};
 
@@ -29,6 +31,8 @@ test("sends an owner notification through Telegram", async () => {
 		chat_id: "telegram-test-chat",
 		text: "Owner review required for appointment-1",
 	});
+	assert.ok(requestSignal instanceof AbortSignal);
+	assert.equal(requestSignal.aborted, false);
 });
 
 test("returns a controlled error when Telegram rejects the request", async () => {

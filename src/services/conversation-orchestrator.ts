@@ -9,15 +9,18 @@ import {
 } from "../models/receptionist.js";
 import { localDateTimeToDate } from "./calendar-time.js";
 import {
+	BookingPersistenceError,
 	type AppointmentBookingRequest,
 	type AppointmentBookingService,
 } from "./appointment-booking.js";
-import type {
-	AppointmentIdentity,
-	AppointmentLookupResult,
-	AppointmentManagementService,
-	CancelAppointmentRequest,
-	RescheduleAppointmentRequest,
+import {
+	AppointmentChangePersistenceError,
+	type AppointmentIdentity,
+	type AppointmentLookupResult,
+	type AppointmentManagementService,
+	type CancelAppointmentRequest,
+	OwnerNotificationError,
+	type RescheduleAppointmentRequest,
 } from "./appointment-management.js";
 import type { BusinessInformationService } from "./business-information.js";
 import { getAppointmentDuration } from "./calendar-availability.js";
@@ -88,8 +91,12 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 				conversation,
 			);
 		} catch (error) {
-			const reason = error instanceof Error ? error.message : "Unknown error";
-			console.error("Message interpretation failed.", reason);
+			console.error("Message interpretation failed.", {
+				businessId: conversation.businessId,
+				conversationId: conversation.id,
+				outcomeStatus: "needs_information",
+				errorName: error instanceof Error ? error.constructor.name : "UnknownError",
+			});
 			return this.finish(
 				conversation,
 				"I’m sorry, I could not safely understand that request. Could you rephrase it?",
@@ -113,10 +120,36 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 		try {
 			return await this.routeMessage(interpretedMessage, message, conversation);
 		} catch (error) {
-			console.error("Conversation action failed.", error);
+			const partialWriteFailure =
+				error instanceof BookingPersistenceError ||
+				error instanceof AppointmentChangePersistenceError ||
+				error instanceof OwnerNotificationError;
+			const appointmentId = partialWriteFailure ? error.appointmentId : undefined;
+
+			console.error("Conversation action failed.", {
+				businessId: conversation.businessId,
+				conversationId: conversation.id,
+				intent: conversation.intent,
+				outcomeStatus: "needs_human",
+				...(appointmentId ? { appointmentId } : {}),
+				errorName: error instanceof Error ? error.constructor.name : "UnknownError",
+			});
+
+			if (partialWriteFailure) {
+				return this.finish(
+					conversation,
+					"The Calendar change completed, but a follow-up step failed. The owner needs to verify the records before another change is attempted.",
+					createConversationOutcome(
+						"needs_human",
+						"Calendar was changed, but a follow-up record or notification failed. Owner review is required.",
+						appointmentId,
+					),
+				);
+			}
+
 			return this.finish(
 				conversation,
-				"I could not safely complete that request. I have recorded it for owner review.",
+				"I could not safely complete that request. The owner needs to review it.",
 				createConversationOutcome(
 					"needs_human",
 					"The requested action could not be completed safely and requires owner review.",

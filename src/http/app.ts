@@ -47,7 +47,9 @@ function handleExpressError(
 		return;
 	}
 
-	console.error("HTTP request failed.", error);
+	console.error("HTTP request failed.", {
+		errorName: error instanceof Error ? error.constructor.name : "UnknownError",
+	});
 	response.status(500).json({ error: "Internal server error" });
 }
 

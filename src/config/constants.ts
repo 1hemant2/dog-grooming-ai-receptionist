@@ -53,6 +53,7 @@ export const APPLICATION_CONFIG = {
 	maxRequestBytes: 16_384,
 	maxMessageCharacters: 4_000,
 	maxConversationIdCharacters: 128,
+	externalRequestTimeoutMs: 10_000,
 };
 
 export const APPLICATION_PATTERNS = {

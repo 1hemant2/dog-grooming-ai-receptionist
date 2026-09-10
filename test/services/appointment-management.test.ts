@@ -6,10 +6,12 @@ import { Appointment, AppointmentSlot } from "../../src/models/appointment.js";
 import { Customer, Pet } from "../../src/models/customer.js";
 import {
 	AppointmentCalendarError,
+	AppointmentChangePersistenceError,
 	AppointmentChangeConfirmationRequiredError,
 	AppointmentManagementService,
 	AppointmentNeedsHumanReviewError,
 	AppointmentUnavailableError,
+	OwnerNotificationError,
 	type RescheduleAppointmentRequest,
 } from "../../src/services/appointment-management.js";
 import type {
@@ -314,6 +316,22 @@ test("reschedules an appointment after a final availability check", async () => 
 	assert.equal(notifier.messages.length, 1);
 });
 
+test("processes a duplicate reschedule request once", async () => {
+	const { service, calendar, availability, contacts, callLog, notifier } = createService();
+	calendar.appointments = [createAppointment()];
+	const request = createRescheduleRequest();
+
+	const firstAppointment = await service.reschedule(request);
+	const duplicateAppointment = await service.reschedule(request);
+
+	assert.equal(firstAppointment.id, duplicateAppointment.id);
+	assert.equal(availability.requests.length, 1);
+	assert.equal(calendar.rescheduleRequests.length, 1);
+	assert.equal(contacts.savedContacts.length, 1);
+	assert.equal(callLog.entries.length, 1);
+	assert.equal(notifier.messages.length, 1);
+});
+
 test("does not change an appointment inside the notice window", async () => {
 	const { service, calendar, availability, notifier } = createService();
 	calendar.appointments = [
@@ -368,6 +386,22 @@ test("returns a controlled error when Calendar rescheduling fails", async () => 
 	assert.equal(callLog.entries.length, 0);
 });
 
+test("retains the appointment ID when persistence fails after rescheduling", async () => {
+	const { service, calendar, contacts } = createService();
+	calendar.appointments = [createAppointment()];
+	contacts.saveFailure = new Error("Sheets is unavailable");
+
+	const request = createRescheduleRequest();
+	await assert.rejects(service.reschedule(request), (error: unknown) => {
+		assert.ok(error instanceof AppointmentChangePersistenceError);
+		assert.equal(error.appointmentId, "appointment-1");
+		return true;
+	});
+	await assert.rejects(service.reschedule(request), AppointmentChangePersistenceError);
+
+	assert.equal(calendar.rescheduleRequests.length, 1);
+});
+
 test("requires confirmation before cancellation", async () => {
 	const { service, calendar } = createService();
 
@@ -394,6 +428,37 @@ test("cancels an appointment, logs it, and notifies the owner", async () => {
 	assert.equal(callLog.entries[0]?.intent, "cancel_appointment");
 	assert.equal(callLog.entries[0]?.outcome.appointmentId, "appointment-1");
 	assert.equal(notifier.messages.length, 1);
+});
+
+test("processes a duplicate cancellation request once", async () => {
+	const { service, calendar, contacts, callLog, notifier } = createService();
+	calendar.appointments = [createAppointment()];
+	const request = createRescheduleRequest();
+
+	await service.cancel(request);
+	await service.cancel(request);
+
+	assert.equal(calendar.findRequests.length, 1);
+	assert.equal(calendar.cancelRequests.length, 1);
+	assert.equal(contacts.savedContacts.length, 1);
+	assert.equal(callLog.entries.length, 1);
+	assert.equal(notifier.messages.length, 1);
+});
+
+test("retains the appointment ID when owner notification fails", async () => {
+	const { service, calendar, notifier } = createService();
+	calendar.appointments = [createAppointment()];
+	notifier.failure = new Error("Telegram is unavailable");
+
+	const request = createRescheduleRequest();
+	await assert.rejects(service.cancel(request), (error: unknown) => {
+		assert.ok(error instanceof OwnerNotificationError);
+		assert.equal(error.appointmentId, "appointment-1");
+		return true;
+	});
+	await assert.rejects(service.cancel(request), OwnerNotificationError);
+
+	assert.equal(calendar.cancelRequests.length, 1);
 });
 
 test("returns a controlled error when Calendar cancellation fails", async () => {

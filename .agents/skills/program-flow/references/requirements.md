@@ -31,7 +31,7 @@ Build a text-based AI receptionist for Maple Street Dog Grooming. It should hand
 - A conversation cannot be resumed under another business or caller phone number.
 - A conversation that starts without a phone number can be resumed by its business and conversation ID. When a phone number is later provided, it becomes associated with that conversation and must match on subsequent requests.
 - After a call ends and its required Call Log data is saved, remove its in-memory conversation state. Do not remove the state if it must be preserved for a failed write or human handoff.
-- Successful responses contain `conversationId`, `status`, and `reply`.
+- Successful responses contain `conversationId`, `status`, and `reply`. They also contain `appointmentId` when an appointment was created or changed, including a partial failure that requires human review.
 
 ## Phase 1 demonstration UI
 
@@ -83,6 +83,8 @@ Build a text-based AI receptionist for Maple Street Dog Grooming. It should hand
 10. Tell the customer what happened and ask whether they need anything else.
 
 If a required lookup fails, the receptionist must not guess. It should explain that it cannot complete the request and preserve enough context for a human to continue.
+
+For Phase 1, duplicate Calendar-write protection is process-local and shares the result of a repeated booking, rescheduling, or cancellation request. It does not survive a restart; a production multi-instance deployment requires durable idempotency storage. Outbound provider requests use a configured timeout. If Calendar succeeds but a later persistence or notification step fails, preserve the appointment identifier, return `needs_human`, and do not blindly repeat the Calendar write.
 
 ## Defined conversation flows
 

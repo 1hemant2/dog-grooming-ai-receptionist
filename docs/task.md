@@ -24,7 +24,7 @@ This is the implementation backlog for Phase 1. The approved behavior remains in
 - [x] T07 — Appointment lookup, rescheduling, and cancellation
 - [x] T08 — Late arrivals, complaints, and human handoff
 - [x] T09 — LLM interpretation and conversation orchestration
-- [ ] T10 — Reliability and safety checks
+- [x] T10 — Reliability and safety checks
 - [ ] T11 — Demo data, end-to-end verification, and documentation
 
 ## T00 — Repository foundation
@@ -221,9 +221,16 @@ Complete when:
 
 ## T10 — Reliability and safety checks
 
-Status: Pending
+Status: Complete
 
 Goal: Make external writes and failure behavior safe enough for demonstration and review.
+
+Decisions:
+
+- Use process-local duplicate-operation guards because Phase 1 keeps conversation state in memory.
+- The duplicate guards do not survive a restart; a multi-instance production service would use durable idempotency storage.
+- Keep the Calendar appointment identifier when a later persistence or notification step fails.
+- Apply one central timeout to outbound provider requests.
 
 Complete when:
 

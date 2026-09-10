@@ -58,11 +58,22 @@ export function createReceiveMessageController(
 
 			if (orchestrator) {
 				const result = await orchestrator.handleMessage(body.message, conversation);
+				console.info("Conversation request completed.", {
+					businessId,
+					conversationId,
+					outcomeStatus: result.outcome.status,
+					...(result.outcome.appointmentId
+						? { appointmentId: result.outcome.appointmentId }
+						: {}),
+				});
 
 				response.status(200).json({
 					conversationId,
 					status: result.outcome.status,
 					reply: result.reply,
+					...(result.outcome.appointmentId
+						? { appointmentId: result.outcome.appointmentId }
+						: {}),
 				});
 				return;
 			}
@@ -175,7 +186,9 @@ function handleConversationError(error: unknown, response: Response): void {
 		return;
 	}
 
-	console.error("Conversation request failed.", error);
+	console.error("Conversation request failed.", {
+		errorName: error instanceof Error ? error.constructor.name : "UnknownError",
+	});
 	response.status(500).json({ error: "Internal server error" });
 }
 

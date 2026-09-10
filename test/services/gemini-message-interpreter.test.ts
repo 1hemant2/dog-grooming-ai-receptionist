@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import type { GenerateContentParameters } from "@google/genai";
 
-import { findBusinessConfig } from "../../src/config/constants.js";
+import { APPLICATION_CONFIG, findBusinessConfig } from "../../src/config/constants.js";
 import { Conversation } from "../../src/models/conversation.js";
 import {
 	GeminiMessageInterpreter,
@@ -72,6 +72,10 @@ test("converts Gemini JSON into validated receptionist fields", async () => {
 	assert.equal(result.contactPhone, "+14155550100");
 	assert.equal(result.confirmation, true);
 	assert.equal(client.parameters?.model, "test-model");
+	assert.equal(
+		client.parameters?.config?.httpOptions?.timeout,
+		APPLICATION_CONFIG.externalRequestTimeoutMs,
+	);
 	assert.equal(client.parameters?.config?.responseMimeType, "application/json");
 	assert.match(String(client.parameters?.contents), /Maple Street Dog Grooming/);
 });

@@ -251,7 +251,11 @@ test("does not create a second Calendar appointment after persistence fails", as
 	const { service, calendarWriter, contacts } = createBookingService();
 	contacts.saveFailure = new Error("Sheets is unavailable");
 
-	await assert.rejects(service.book(bookingRequest), BookingPersistenceError);
+	await assert.rejects(service.book(bookingRequest), (error: unknown) => {
+		assert.ok(error instanceof BookingPersistenceError);
+		assert.equal(error.appointmentId, "appointment-1");
+		return true;
+	});
 	await assert.rejects(service.book(bookingRequest), BookingPersistenceError);
 
 	assert.equal(calendarWriter.requests.length, 1);

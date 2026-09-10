@@ -9,8 +9,20 @@ import type { ConversationMessageHandler } from "../../src/services/conversation
 const conversationStore = new InMemoryConversationStore();
 const orchestrator: ConversationMessageHandler = {
 	async handleMessage(message, conversation) {
-		assert.equal(message, "What services do you offer?");
 		assert.equal(conversation.businessId, "maple-street-dog-grooming");
+
+		if (message === "Book it") {
+			return {
+				reply: "The Calendar change completed, but owner review is required.",
+				outcome: createConversationOutcome(
+					"needs_human",
+					"Calendar changed but persistence failed.",
+					"appointment-partial-1",
+				),
+			};
+		}
+
+		assert.equal(message, "What services do you offer?");
 
 		return {
 			reply: "We offer Bath.",
@@ -53,4 +65,20 @@ test("passes HTTP messages through the configured conversation handler", async (
 	assert.equal(body.status, "answered");
 	assert.equal(body.reply, "We offer Bath.");
 	assert.match(body.conversationId, /^[0-9a-f-]{36}$/);
+});
+
+test("returns the appointment ID needed to recover a partial write", async () => {
+	const response = await fetch(`${baseUrl}/conversations/messages`, {
+		method: "POST",
+		headers: {
+			"content-type": "application/json",
+			"x-business-id": "maple-street-dog-grooming",
+		},
+		body: JSON.stringify({ message: "Book it" }),
+	});
+	const body = await response.json();
+
+	assert.equal(response.status, 200);
+	assert.equal(body.status, "needs_human");
+	assert.equal(body.appointmentId, "appointment-partial-1");
 });

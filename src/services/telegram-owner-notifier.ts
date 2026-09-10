@@ -1,4 +1,8 @@
-import { EXT, getTelegramOwnerNotificationConfig } from "../config/constants.js";
+import {
+	APPLICATION_CONFIG,
+	EXT,
+	getTelegramOwnerNotificationConfig,
+} from "../config/constants.js";
 import type { OwnerNotifier } from "./receptionist-dependencies.js";
 
 export interface TelegramOwnerNotificationConfig {
@@ -34,6 +38,7 @@ export class TelegramOwnerNotifier implements OwnerNotifier {
 		try {
 			response = await this.fetcher(url, {
 				method: "POST",
+				signal: AbortSignal.timeout(APPLICATION_CONFIG.externalRequestTimeoutMs),
 				headers: {
 					"Content-Type": "application/json",
 				},

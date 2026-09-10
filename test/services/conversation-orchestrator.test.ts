@@ -4,9 +4,10 @@ import { test } from "node:test";
 import { findBusinessConfig } from "../../src/config/constants.js";
 import { Appointment } from "../../src/models/appointment.js";
 import { Conversation } from "../../src/models/conversation.js";
-import type {
-	AppointmentBookingRequest,
-	AppointmentBookingService,
+import {
+	type AppointmentBookingRequest,
+	type AppointmentBookingService,
+	BookingPersistenceError,
 } from "../../src/services/appointment-booking.js";
 import { BusinessInformationService } from "../../src/services/business-information.js";
 import {
@@ -191,4 +192,37 @@ test("passes confirmed booking details to the booking service", async () => {
 	assert.equal(receivedRequest?.pet.name, "Milo");
 	assert.equal(receivedRequest?.startAt, "2026-09-12T17:00:00.000Z");
 	assert.equal(receivedRequest?.endAt, "2026-09-12T18:00:00.000Z");
+});
+
+test("preserves appointment context when persistence fails after a Calendar write", async () => {
+	const orchestrator = new ConversationOrchestrator(
+		configuredBusiness,
+		new FakeInterpreter({
+			intent: "book_appointment",
+			customerName: "Alex Morgan",
+			contactPhone: "+14155550100",
+			contactPhoneConfirmed: true,
+			petName: "Milo",
+			weightLb: 25,
+			rabiesVaccinationStatus: "current",
+			serviceId: "bath",
+			requestedDate: "2026-09-12",
+			requestedTime: "10:00",
+			confirmation: true,
+		}),
+		createDependencies({
+			async book(): Promise<Appointment> {
+				throw new BookingPersistenceError(
+					"Appointment was created, but Sheets failed",
+					"appointment-partial-1",
+				);
+			},
+		}),
+	);
+
+	const result = await orchestrator.handleMessage("Book it", createConversation());
+
+	assert.equal(result.outcome.status, "needs_human");
+	assert.equal(result.outcome.appointmentId, "appointment-partial-1");
+	assert.match(result.reply, /Calendar change completed/);
 });

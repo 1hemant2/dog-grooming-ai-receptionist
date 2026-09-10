@@ -49,7 +49,14 @@ export class AppointmentNeedsHumanReviewError extends AppointmentBookingError {}
 
 export class CalendarAppointmentError extends AppointmentBookingError {}
 
-export class BookingPersistenceError extends AppointmentBookingError {}
+export class BookingPersistenceError extends AppointmentBookingError {
+	readonly appointmentId: string;
+
+	constructor(message: string, appointmentId: string, options?: ErrorOptions) {
+		super(message, options);
+		this.appointmentId = appointmentId;
+	}
+}
 
 export class AppointmentBookingService {
 	private readonly bookingOperations = new Map<string, Promise<Appointment>>();
@@ -191,6 +198,7 @@ export class AppointmentBookingService {
 		} catch (error) {
 			throw new BookingPersistenceError(
 				"Appointment was created, but contact or Call Log persistence failed",
+				appointment.id,
 				{ cause: error },
 			);
 		}

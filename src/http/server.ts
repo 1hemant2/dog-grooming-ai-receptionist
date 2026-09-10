@@ -44,7 +44,9 @@ export function registerShutdownSignals(server: Server): void {
 			await closeServerGracefully(server);
 			console.info("HTTP server stopped.");
 		} catch (error) {
-			console.error("HTTP server shutdown failed.", error);
+			console.error("HTTP server shutdown failed.", {
+				errorName: error instanceof Error ? error.constructor.name : "UnknownError",
+			});
 			process.exitCode = 1;
 		}
 	};
