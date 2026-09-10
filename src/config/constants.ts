@@ -4,6 +4,7 @@ const DEFAULT_PORT = 3000;
 const DEFAULT_BUSINESS_ID = "maple-street-dog-grooming";
 const DEFAULT_SPREADSHEET_ID = DEFAULT_BUSINESS_ID;
 const DEFAULT_CALENDAR_ID = DEFAULT_BUSINESS_ID;
+const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
 
 export const EXT = {
 	googleapis: {
@@ -52,6 +53,11 @@ export const APPLICATION_CONFIG = {
 	maxRequestBytes: 16_384,
 	maxMessageCharacters: 4_000,
 	maxConversationIdCharacters: 128,
+};
+
+export const APPLICATION_PATTERNS = {
+	// Matches a 24-hour time in HH:mm format, from 00:00 through 23:59.
+	time24Hour: /^(?:[01][0-9]|2[0-3]):[0-5][0-9]$/,
 };
 
 // Store business configurations in an array so new vendors can be added without changing request handling.
@@ -151,6 +157,17 @@ export function getTelegramOwnerNotificationConfig(): {
 	}
 
 	return { botToken, chatId };
+}
+
+export function getGeminiConfig(): { apiKey: string; model: string } {
+	const apiKey = process.env.GEMINI_API_KEY?.trim();
+	const model = process.env.GEMINI_MODEL?.trim() || DEFAULT_GEMINI_MODEL;
+
+	if (!apiKey) {
+		throw new Error("GEMINI_API_KEY is required");
+	}
+
+	return { apiKey, model };
 }
 
 function getSpreadsheetId(): string {

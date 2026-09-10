@@ -29,6 +29,9 @@ alone cannot authorize writes to a private spreadsheet.
 For Calendar availability, enable the Google Calendar API, share the business calendar with the
 same service account, and set its ID in `GOOGLE_CALENDAR_ID`.
 
+The receptionist uses Gemini to interpret customer messages. Set `GEMINI_API_KEY` from Google AI
+Studio. `GEMINI_MODEL` is optional and defaults to `gemini-2.5-flash`.
+
 Start or continue a conversation with:
 
 ```bash

@@ -3,10 +3,12 @@ import type { Request, RequestHandler, Response } from "express";
 import { APPLICATION_CONFIG, findBusinessConfig } from "../config/constants.js";
 import {
 	ConversationNotFoundError,
+	type ConversationLookupInput,
 	type ReceiveMessageInput,
 	type InMemoryConversationStore,
 } from "../models/conversation.js";
 import { isValidPhoneNumber } from "../models/customer.js";
+import type { ConversationMessageHandler } from "../services/conversation-orchestrator.js";
 
 const CONVERSATION_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
@@ -18,8 +20,9 @@ interface ConversationRequestBody {
 
 export function createReceiveMessageController(
 	conversationStore: InMemoryConversationStore,
+	resolveOrchestrator?: (businessId: string) => ConversationMessageHandler | undefined,
 ): RequestHandler {
-	return function receiveMessage(request: Request, response: Response): void {
+	return async function receiveMessage(request: Request, response: Response): Promise<void> {
 		try {
 			const businessId = readBusinessId(request);
 			const businessConfig = findBusinessConfig(businessId);
@@ -41,6 +44,28 @@ export function createReceiveMessageController(
 			}
 
 			const conversationId = conversationStore.receiveMessage(conversationInput);
+			const lookupInput: ConversationLookupInput = {
+				businessId,
+				conversationId,
+			};
+
+			if (body.callerPhone !== undefined) {
+				lookupInput.callerPhone = body.callerPhone;
+			}
+
+			const conversation = conversationStore.getConversation(lookupInput);
+			const orchestrator = resolveOrchestrator?.(businessId);
+
+			if (orchestrator) {
+				const result = await orchestrator.handleMessage(body.message, conversation);
+
+				response.status(200).json({
+					conversationId,
+					status: result.outcome.status,
+					reply: result.reply,
+				});
+				return;
+			}
 
 			response.status(202).json({
 				conversationId,

@@ -10,6 +10,8 @@ Build a text-based AI receptionist for Maple Street Dog Grooming. It should hand
 
 - Google Calendar checks availability and creates or changes appointments.
 - Google Sheets keeps one contact row per caller and records what happened in each conversation.
+- Phase 1 uses Gemini as the initial LLM provider through the `MessageInterpreter` boundary. Provider-specific SDK calls stay inside an adapter so another provider can replace it without changing business services or orchestration.
+- Gemini credentials use `GEMINI_API_KEY`; `GEMINI_MODEL` selects the model and defaults to the configured Phase 1 model.
 
 ## Setup requirements
 

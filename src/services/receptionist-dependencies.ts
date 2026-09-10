@@ -108,3 +108,9 @@ export interface MessageInterpreter {
 		conversation: Conversation,
 	): Promise<InterpretedMessage>;
 }
+
+export class MessageInterpreterError extends Error {
+	constructor(message: string, options?: ErrorOptions) {
+		super(message, options);
+	}
+}

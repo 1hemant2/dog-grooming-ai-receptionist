@@ -1,4 +1,5 @@
 import type { ServiceId } from "./business.js";
+import type { RabiesVaccinationStatus } from "./customer.js";
 
 export type ReceptionistIntent =
 	| "services"
@@ -16,6 +17,16 @@ export type ReceptionistIntent =
 export type ConversationOutcomeStatus =
 	"answered" | "needs_information" | "completed" | "unavailable" | "needs_human";
 
+export type ComplaintCategory =
+	| "operational"
+	| "refund_or_charge"
+	| "grooming_quality"
+	| "safety"
+	| "injury"
+	| "aggressive_behavior"
+	| "compensation"
+	| "other";
+
 // conversation must have some outcome
 export interface ConversationOutcome {
 	status: ConversationOutcomeStatus;
@@ -24,19 +35,33 @@ export interface ConversationOutcome {
 	callbackRequested: boolean;
 }
 
-// This will be goint to use recptionist business logic, we will get this from message MessageInterpreter
 export interface InterpretedMessage {
 	intent: ReceptionistIntent;
 	customerName?: string;
 	contactPhone?: string;
+	contactPhoneConfirmed?: boolean;
 	petName?: string;
 	breedOrMix?: string;
 	weightLb?: number;
+	rabiesVaccinationStatus?: RabiesVaccinationStatus;
+	healthConcerns?: string;
+	behaviorConcerns?: string;
+	safetyConcern?: string;
 	serviceId?: ServiceId;
+	serviceName?: string;
+	requestedServiceNames?: string[];
+	dayName?: string;
 	requestedDate?: string;
 	requestedTime?: string;
+	requestedStartAt?: string;
+	requestedEndAt?: string;
+	appointmentId?: string;
 	minutesLate?: number;
 	confirmation?: boolean;
+	complaintCategory?: ComplaintCategory;
+	complaintDetails?: string;
+	disputedCharge?: string;
+	resolution?: string;
 }
 
 export function createConversationOutcome(

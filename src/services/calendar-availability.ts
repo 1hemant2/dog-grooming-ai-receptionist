@@ -136,8 +136,8 @@ function getHumanReviewReason(
 	return undefined;
 }
 
-// add the extra duration for large dogs
-function getAppointmentDuration(
+// add the extra duration for large dogs, else return the same duration
+export function getAppointmentDuration(
 	business: BusinessConfig,
 	serviceDurationMinutes: number,
 	dogWeightLb: number,

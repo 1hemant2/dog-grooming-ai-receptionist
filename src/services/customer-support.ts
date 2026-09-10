@@ -1,7 +1,11 @@
 import type { Appointment } from "../models/appointment.js";
 import type { BusinessConfig } from "../models/business.js";
 import { isValidPhoneNumber } from "../models/customer.js";
-import { createConversationOutcome, type ConversationOutcome } from "../models/receptionist.js";
+import {
+	createConversationOutcome,
+	type ComplaintCategory,
+	type ConversationOutcome,
+} from "../models/receptionist.js";
 import type {
 	CallLog,
 	ContactRecord,
@@ -9,15 +13,7 @@ import type {
 	OwnerNotifier,
 } from "./receptionist-dependencies.js";
 
-export type ComplaintCategory =
-	| "operational"
-	| "refund_or_charge"
-	| "grooming_quality"
-	| "safety"
-	| "injury"
-	| "aggressive_behavior"
-	| "compensation"
-	| "other";
+export type { ComplaintCategory } from "../models/receptionist.js";
 
 interface CustomerSupportRequest {
 	businessId: string;

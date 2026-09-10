@@ -1,10 +1,14 @@
 import { createServer, type Server } from "node:http";
 
 import type { InMemoryConversationStore } from "../models/conversation.js";
+import type { ConversationMessageHandler } from "../services/conversation-orchestrator.js";
 import { createHttpApp } from "./app.js";
 
-export function createHttpServer(conversationStore: InMemoryConversationStore): Server {
-	const app = createHttpApp(conversationStore);
+export function createHttpServer(
+	conversationStore: InMemoryConversationStore,
+	resolveOrchestrator?: (businessId: string) => ConversationMessageHandler | undefined,
+): Server {
+	const app = createHttpApp(conversationStore, resolveOrchestrator);
 	return createServer(app);
 }
 

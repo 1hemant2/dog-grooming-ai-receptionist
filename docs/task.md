@@ -23,7 +23,7 @@ This is the implementation backlog for Phase 1. The approved behavior remains in
 - [x] T06 — Appointment booking
 - [x] T07 — Appointment lookup, rescheduling, and cancellation
 - [x] T08 — Late arrivals, complaints, and human handoff
-- [ ] T09 — LLM interpretation and conversation orchestration
+- [x] T09 — LLM interpretation and conversation orchestration
 - [ ] T10 — Reliability and safety checks
 - [ ] T11 — Demo data, end-to-end verification, and documentation
 
@@ -200,13 +200,15 @@ Complete when:
 
 ## T09 — LLM interpretation and conversation orchestration
 
-Status: Pending
+Status: Complete
 
 Goal: Connect natural-language customer messages to tested application behavior.
 
 Decision:
 
-- Choose the LLM provider and model.
+- Use Gemini as the initial LLM provider through a provider-neutral `MessageInterpreter` adapter.
+- Read the API key and model name from central application configuration.
+- Keep provider-specific SDK calls outside the conversation orchestrator so another provider can replace Gemini later.
 
 Complete when:
 

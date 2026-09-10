@@ -3,13 +3,17 @@ import express, { type Express, type NextFunction, type Request, type Response }
 import { APPLICATION_CONFIG } from "../config/constants.js";
 import type { InMemoryConversationStore } from "../models/conversation.js";
 import { createConversationRouter } from "../routes/conversation-routes.js";
+import type { ConversationMessageHandler } from "../services/conversation-orchestrator.js";
 
-export function createHttpApp(conversationStore: InMemoryConversationStore): Express {
+export function createHttpApp(
+	conversationStore: InMemoryConversationStore,
+	resolveOrchestrator?: (businessId: string) => ConversationMessageHandler | undefined,
+): Express {
 	const app = express();
 
 	app.use(express.json({ limit: APPLICATION_CONFIG.maxRequestBytes }));
 	app.get("/health", handleHealthCheck);
-	app.use("/conversations", createConversationRouter(conversationStore));
+	app.use("/conversations", createConversationRouter(conversationStore, resolveOrchestrator));
 	app.use(handleNotFound);
 	app.use(handleExpressError);
 
