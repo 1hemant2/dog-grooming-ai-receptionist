@@ -54,6 +54,7 @@ Build a text-based AI receptionist for Maple Street Dog Grooming. It should hand
 - Every service has a configured duration. Calendar availability must cover the complete service duration.
 - Shop hours, timezone, services, durations, and starting prices come from configured shop information.
 - A confirmed `contactPhone` identifies a contact. Confirm the customer's name and pet name when finding an existing appointment.
+- Maple Street accepts a 10-digit US contact number in natural customer speech and normalizes it to E.164 with the `+1` country code before confirmation and persistence.
 - Prices are estimates. The final price may depend on the dog's size, coat condition, behavior, and time required.
 - The receptionist may book, reschedule, or cancel appointments, but it does not take payments, issue refunds, or apply fees.
 - Automated cancellations and rescheduling require at least 24 hours' notice. Requests inside 24 hours go to a human.
@@ -63,8 +64,9 @@ Build a text-based AI receptionist for Maple Street Dog Grooming. It should hand
 - The shop is open Monday through Saturday from 9:00 AM to 5:00 PM and closed on Sunday.
 - The shop timezone is `America/Los_Angeles`. No special holiday hours are defined for Phase 1.
 - Bath starts at $45 and takes 60 minutes.
-- Bath and Trim starts at $70 and takes 90 minutes.
-- Full Groom starts at $95 and takes 120 minutes.
+- Bath includes shampoo and conditioner, blow-drying, brushing, ear cleaning, and a nail trim.
+- Bath and Trim starts at $70, takes 90 minutes, and adds light trimming around the face, feet, and sanitary areas to the Bath service.
+- Full Groom starts at $95, takes 120 minutes, and adds a complete haircut and style to the Bath service.
 - Dogs from 71 to 100 lb add 30 minutes to the service duration. Dogs over 100 lb require human review.
 - Aggression, severe anxiety, active illness, or injury requires human review.
 - Phase 1 handoff records `needs_human` in the Call Log and tells the customer that the owner will call back.
@@ -76,13 +78,22 @@ Build a text-based AI receptionist for Maple Street Dog Grooming. It should hand
 1. Resolve the business from trusted request metadata and load its configuration.
 2. Identify what the customer wants.
 3. Collect only the information needed for that request. For customer-specific operations, collect and confirm a `contactPhone`.
-4. Check the relevant source of truth for that business: shop information, policy, or Calendar.
-5. Answer the question, propose an available option, or hand the request to a human.
-6. Before changing Calendar, confirm the customer, pet, service, date, and time.
-7. Check Calendar again immediately before writing to avoid a stale availability result.
-8. Perform the approved Calendar action once and verify that it succeeded.
-9. Update the contact record in the business's Sheets records as needed.
-10. Tell the customer what happened and ask whether they need anything else.
+4. When required information is missing, ask for one item at a time and preserve facts already supplied earlier in the conversation.
+5. Preserve active-request facts as structured conversation state. The message interpreter extracts the latest answer instead of reconstructing every fact from the complete transcript.
+6. Parse expected short answers such as phone numbers, names, weights, dates, times, and confirmations locally when they are unambiguous. Use the LLM when the answer cannot be safely interpreted locally.
+7. Accept natural appointment dates such as `11th September` and resolve a missing year to the next occurrence in the business timezone.
+8. During an active booking, answer a service-information side question without discarding the booking state, then resume by asking for the next missing booking field.
+9. During an active request, preserve the request when the customer asks an unrelated question. Explain the receptionist's supported scope and return to the next missing field.
+10. When the customer clearly starts another request, retain the conversation but do not reuse details that only belonged to the earlier request.
+11. Check the relevant source of truth for that business: shop information, policy, or Calendar.
+12. Answer the question, propose an available option, or hand the request to a human.
+13. Before changing Calendar, confirm the customer, pet, service, date, and time.
+14. Check Calendar again immediately before writing to avoid a stale availability result.
+15. Perform the approved Calendar action once and verify that it succeeded.
+16. Update the contact record in the business's Sheets records as needed.
+17. Tell the customer what happened and ask whether they need anything else.
+
+Customer-facing questions use conversational language and refer to known details, such as the pet's name, when helpful. Internal terms such as `configured service` are not shown to customers. Customer-facing appointment dates and times are formatted in the business timezone; UTC remains an internal Calendar and persistence representation.
 
 When the customer ends the conversation, save all handled intents, the final outcome, and conversation
 metadata to one Call Log row before deleting the in-memory conversation. If the Call Log write fails,
@@ -92,25 +103,35 @@ If a required lookup fails, the receptionist must not guess. It should explain t
 
 For Phase 1, duplicate Calendar-write protection is process-local and shares the result of a repeated booking, rescheduling, or cancellation request. It does not survive a restart; a production multi-instance deployment requires durable idempotency storage. Outbound provider requests use a configured timeout. If Calendar succeeds but a later persistence or notification step fails, preserve the appointment identifier, return `needs_human`, and do not blindly repeat the Calendar write.
 
+Operational timing logs record request start, response time, elapsed milliseconds, conversation ID, and safe request-size metadata. Gemini timing logs also record provider duration, prompt character count, and conversation history count. Do not log customer message text, phone numbers, prompts, credentials, or other secrets.
+
+Gemini receives only a bounded recent-history window plus the current active intent and expected answer type. This keeps later turns responsive and reduces confusion from completed parts of a long conversation.
+
 ## Defined conversation flows
 
 ### Service enquiry and booking
 
 1. Check whether the shop offers every requested service.
-2. If none of the requested services are offered, explain that the shop does not provide them.
-3. If only some services are offered, state what is available and ask whether the customer wants to continue with those services.
-4. Collect the pet's name, breed or mix, size, and any health or behavior information needed for safe scheduling.
-5. Check the requested appointment time only after the service and required duration are known.
-6. If the time is available, collect the customer's name and confirmed `contactPhone`, confirm the details, and book it.
-7. If the time is unavailable, offer the nearest available time on the same day, then the next day. Prefer times closest to the customer's requested time.
-8. Book only after the customer accepts an offered time.
+2. When the customer asks what a specific service includes, answer from that service's configured inclusions and include its duration and starting price.
+3. If none of the requested services are offered, explain that the shop does not provide them.
+4. If only some services are offered, state what is available and ask whether the customer wants to continue with those services.
+5. Collect the pet's name, breed or mix, size, and any health or behavior information needed for safe scheduling.
+6. Check the requested appointment time only after the service and required duration are known.
+7. If the time is available, collect the customer's name and confirmed `contactPhone`, confirm the details, and book it.
+8. If the time is unavailable, offer the nearest available time on the same day, then the next day. Prefer times closest to the customer's requested time.
+9. Book only after the customer accepts an offered time.
 
 ### Pricing enquiry
 
 1. Find the starting price using the requested service and the dog's size.
 2. Give the starting-price estimate and explain which factors may change the final price.
 3. Do not promise a final price when required information is missing.
-4. Hand off unusual pricing questions or disputed charges to a human.
+4. Dogs from 71 through 100 lb remain eligible for an estimate and require the configured additional time.
+5. Dogs above 100 lb require human review. Explain that the dog's size needs groomer review before giving a price or booking. Before notifying the owner, collect and confirm a callback phone number, then collect the customer and pet names when they are missing. Do not provide an automatic price or booking.
+6. After the callback details are collected, notify the owner, tell the customer that the owner will call back, and keep the conversation available until it ends.
+7. When the conversation ends, write one Call Log row with `needs_human` and `callbackRequested: true`.
+8. If the customer asks to be connected again after this handoff, confirm that the request is already with the owner without sending a duplicate notification.
+9. Hand off unusual pricing questions or disputed charges to a human.
 
 ### Business-hours enquiry
 

@@ -27,6 +27,20 @@ export type ComplaintCategory =
 	| "compensation"
 	| "other";
 
+export type ExpectedCustomerField =
+	| "contact_phone"
+	| "contact_phone_confirmation"
+	| "customer_name"
+	| "pet_name"
+	| "dog_weight"
+	| "rabies_status"
+	| "service"
+	| "requested_date"
+	| "requested_time"
+	| "appointment_confirmation"
+	| "minutes_late"
+	| "complaint_category";
+
 // conversation must have some outcome
 export interface ConversationOutcome {
 	status: ConversationOutcomeStatus;
@@ -53,8 +67,6 @@ export interface InterpretedMessage {
 	dayName?: string;
 	requestedDate?: string;
 	requestedTime?: string;
-	requestedStartAt?: string;
-	requestedEndAt?: string;
 	appointmentId?: string;
 	minutesLate?: number;
 	confirmation?: boolean;

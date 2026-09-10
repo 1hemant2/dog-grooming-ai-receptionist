@@ -26,16 +26,32 @@ test("answers service availability from business configuration", () => {
 	assert.match(mixedServices.summary, /Bath/);
 });
 
+test("answers what a configured service includes", () => {
+	const service = new BusinessInformationService(business);
+
+	const fullGroom = service.answerServices(["full groom"]);
+
+	assert.equal(fullGroom.status, "answered");
+	assert.match(fullGroom.summary, /shampoo and conditioner/);
+	assert.match(fullGroom.summary, /nail trim/);
+	assert.match(fullGroom.summary, /complete haircut and style/);
+	assert.match(fullGroom.summary, /starts at \$95/);
+	assert.match(fullGroom.summary, /takes about 2 hours/);
+});
+
 test("answers configured starting prices with a disclaimer", () => {
 	const service = new BusinessInformationService(business);
 
 	const price = service.answerPricing("bath", 50);
+	const maximumSupportedWeight = service.answerPricing("bath", 100);
 	const missingService = service.answerPricing(undefined);
 	const oversizedDog = service.answerPricing("bath", 101);
 
 	assert.equal(price.status, "answered");
 	assert.match(price.summary, /starts at \$45/);
 	assert.match(price.summary, /final price may vary/);
+	assert.equal(maximumSupportedWeight.status, "answered");
+	assert.match(maximumSupportedWeight.summary, /additional minutes/);
 	assert.equal(missingService.status, "needs_information");
 	assert.equal(oversizedDog.status, "needs_human");
 });

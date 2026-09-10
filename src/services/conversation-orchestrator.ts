@@ -5,10 +5,11 @@ import type { PetDetails } from "../models/customer.js";
 import {
 	createConversationOutcome,
 	type ConversationOutcome,
+	type ExpectedCustomerField,
 	type InterpretedMessage,
 	type ReceptionistIntent,
 } from "../models/receptionist.js";
-import { localDateTimeToDate } from "./calendar-time.js";
+import { formatLocalDateTime, localDateTimeToDate } from "./calendar-time.js";
 import {
 	BookingPersistenceError,
 	type AppointmentBookingRequest,
@@ -32,7 +33,7 @@ import type {
 	CustomerSupportResult,
 } from "./customer-support.js";
 import { AppointmentSlot } from "../models/appointment.js";
-import type { CallLog, MessageInterpreter } from "./receptionist-dependencies.js";
+import type { CallLog, MessageInterpreter, OwnerNotifier } from "./receptionist-dependencies.js";
 
 export interface ConversationResponse {
 	reply: string;
@@ -57,6 +58,7 @@ export interface ConversationOrchestratorDependencies {
 	booking: Pick<AppointmentBookingService, "book">;
 	management: Pick<AppointmentManagementService, "findAppointments" | "reschedule" | "cancel">;
 	support: Pick<CustomerSupportService, "handleLateArrival" | "recordComplaint">;
+	ownerNotifier: Pick<OwnerNotifier, "notify">;
 }
 
 interface AppointmentIdentityWithConversation extends AppointmentIdentity {
@@ -111,6 +113,20 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 			throw new Error("Conversation does not belong to the configured business");
 		}
 
+		if (conversation.ownerHandoffNotified) {
+			const outcome =
+				conversation.outcome ??
+				createConversationOutcome(
+					"needs_human",
+					"The request has already been sent to the owner for review.",
+				);
+			return this.finish(
+				conversation,
+				"I’ve already sent the request to the owner. They will call you back.",
+				outcome,
+			);
+		}
+
 		let interpretedMessage: InterpretedMessage;
 
 		try {
@@ -137,6 +153,20 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 				),
 			);
 		}
+
+		const pricingHandoffResponse = await this.continuePricingHandoff(
+			interpretedMessage,
+			conversation,
+		);
+		if (pricingHandoffResponse) return pricingHandoffResponse;
+
+		const interruptionResponse = await this.handleInterruptionDuringActiveRequest(
+			interpretedMessage,
+			conversation,
+		);
+		if (interruptionResponse) return interruptionResponse;
+
+		interpretedMessage = conversation.updateActiveRequest(interpretedMessage);
 
 		const contactPhoneResult = this.applyConfirmedContactPhone(
 			interpretedMessage,
@@ -189,6 +219,229 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 		}
 	}
 
+	private async handleInterruptionDuringActiveRequest(
+		interpretedMessage: InterpretedMessage,
+		conversation: Conversation,
+	): Promise<ConversationResponse | undefined> {
+		const activeRequest = conversation.activeRequest;
+		const expectedCustomerField = conversation.expectedCustomerField;
+
+		if (!activeRequest || !expectedCustomerField) return undefined;
+
+		switch (interpretedMessage.intent) {
+			case "services":
+				return this.answerServicesDuringActiveRequest(
+					interpretedMessage,
+					activeRequest,
+					conversation,
+					expectedCustomerField,
+				);
+			case "pricing":
+				return this.answerPricingDuringActiveRequest(
+					interpretedMessage,
+					activeRequest,
+					conversation,
+					expectedCustomerField,
+				);
+			case "business_hours":
+				return this.finishInterruption(
+					conversation,
+					expectedCustomerField,
+					interpretedMessage.intent,
+					this.dependencies.information.answerBusinessHours(interpretedMessage.dayName),
+				);
+			case "breed_or_size":
+				return this.answerBreedOrSizeDuringActiveRequest(
+					interpretedMessage,
+					activeRequest,
+					conversation,
+					expectedCustomerField,
+				);
+			case "vaccination":
+				return this.finishInterruption(
+					conversation,
+					expectedCustomerField,
+					interpretedMessage.intent,
+					this.dependencies.information.answerVaccination(),
+				);
+			case "unknown":
+				return this.finishInterruption(
+					conversation,
+					expectedCustomerField,
+					interpretedMessage.intent,
+					createConversationOutcome(
+						"answered",
+						"I’m focused on dog-grooming questions. I can help with services, pricing, hours, appointments, vaccinations, or complaints.",
+					),
+				);
+			default:
+				return undefined;
+		}
+	}
+
+	private async continuePricingHandoff(
+		interpretedMessage: InterpretedMessage,
+		conversation: Conversation,
+	): Promise<ConversationResponse | undefined> {
+		if (!this.isCollectingPricingHandoff(conversation)) return undefined;
+
+		const updatedRequest = conversation.updateActiveRequest(interpretedMessage);
+		const contactPhoneResult = this.applyConfirmedContactPhone(updatedRequest, conversation);
+		if (contactPhoneResult) return contactPhoneResult;
+
+		return this.collectPricingHandoffDetails(updatedRequest, conversation);
+	}
+
+	private isCollectingPricingHandoff(conversation: Conversation): boolean {
+		const activeRequest = conversation.activeRequest;
+
+		return (
+			conversation.outcome?.status === "needs_information" &&
+			conversation.expectedCustomerField !== undefined &&
+			activeRequest?.intent === "pricing" &&
+			activeRequest.weightLb !== undefined &&
+			activeRequest.weightLb > this.business.humanReviewWeightLb
+		);
+	}
+
+	private answerServicesDuringActiveRequest(
+		interpretedMessage: InterpretedMessage,
+		activeRequest: Readonly<InterpretedMessage>,
+		conversation: Conversation,
+		expectedCustomerField: ExpectedCustomerField,
+	): ConversationResponse {
+		let requestedServiceNames = interpretedMessage.requestedServiceNames;
+
+		if (!requestedServiceNames) {
+			const requestedServiceName =
+				interpretedMessage.serviceName ?? interpretedMessage.serviceId;
+			if (requestedServiceName) requestedServiceNames = [requestedServiceName];
+		}
+
+		const serviceOutcome = this.dependencies.information.answerServices(requestedServiceNames);
+		return this.finishInterruption(
+			conversation,
+			expectedCustomerField,
+			interpretedMessage.intent,
+			serviceOutcome,
+			activeRequest,
+		);
+	}
+
+	private async answerPricingDuringActiveRequest(
+		interpretedMessage: InterpretedMessage,
+		activeRequest: Readonly<InterpretedMessage>,
+		conversation: Conversation,
+		expectedCustomerField: ExpectedCustomerField,
+	): Promise<ConversationResponse> {
+		const serviceName =
+			interpretedMessage.serviceName ??
+			interpretedMessage.serviceId ??
+			activeRequest.serviceName ??
+			activeRequest.serviceId;
+		const weightLb = interpretedMessage.weightLb ?? activeRequest.weightLb;
+		const outcome = this.dependencies.information.answerPricing(serviceName, weightLb);
+
+		if (outcome.status === "needs_human") {
+			conversation.recordIntent(interpretedMessage.intent);
+			return this.beginPricingHandoff(
+				interpretedMessage,
+				conversation,
+				outcome,
+				activeRequest,
+			);
+		}
+
+		return this.finishInterruption(
+			conversation,
+			expectedCustomerField,
+			interpretedMessage.intent,
+			outcome,
+			activeRequest,
+		);
+	}
+
+	private answerBreedOrSizeDuringActiveRequest(
+		interpretedMessage: InterpretedMessage,
+		activeRequest: Readonly<InterpretedMessage>,
+		conversation: Conversation,
+		expectedCustomerField: ExpectedCustomerField,
+	): ConversationResponse {
+		const serviceName =
+			interpretedMessage.serviceName ??
+			interpretedMessage.serviceId ??
+			activeRequest.serviceName ??
+			activeRequest.serviceId;
+		const breedOrMix = interpretedMessage.breedOrMix ?? activeRequest.breedOrMix;
+		const weightLb = interpretedMessage.weightLb ?? activeRequest.weightLb;
+		const safetyConcern = interpretedMessage.safetyConcern ?? activeRequest.safetyConcern;
+		const question = {
+			...(serviceName ? { serviceName } : {}),
+			...(breedOrMix ? { breedOrMix } : {}),
+			...(weightLb !== undefined ? { weightLb } : {}),
+			...(safetyConcern ? { safetyConcern } : {}),
+		};
+
+		return this.finishInterruption(
+			conversation,
+			expectedCustomerField,
+			interpretedMessage.intent,
+			this.dependencies.information.answerBreedOrSize(question),
+			activeRequest,
+		);
+	}
+
+	private finishInterruption(
+		conversation: Conversation,
+		expectedCustomerField: ExpectedCustomerField,
+		intent: ReceptionistIntent,
+		outcome: ConversationOutcome,
+		activeRequest?: Readonly<InterpretedMessage>,
+	): ConversationResponse {
+		conversation.recordIntent(intent);
+
+		if (outcome.status === "needs_human") {
+			return this.finish(conversation, outcome.summary, outcome);
+		}
+
+		const continuationPrompt = this.getBookingContinuationPrompt(
+			activeRequest ?? conversation.activeRequest,
+			expectedCustomerField,
+		);
+		const reply = continuationPrompt
+			? `${outcome.summary} ${continuationPrompt}`
+			: outcome.summary;
+		const response = this.finish(
+			conversation,
+			reply,
+			createConversationOutcome("needs_information", reply),
+		);
+		conversation.expectCustomerField(expectedCustomerField);
+		return response;
+	}
+
+	private getBookingContinuationPrompt(
+		activeRequest: Readonly<InterpretedMessage> | undefined,
+		expectedCustomerField: ExpectedCustomerField,
+	): string | undefined {
+		const petName = activeRequest?.petName ?? "your dog";
+		const service = activeRequest ? this.findService(activeRequest) : undefined;
+		const serviceName = service?.name ?? "grooming appointment";
+
+		switch (expectedCustomerField) {
+			case "requested_date":
+				return `If you'd like to continue, what day works best for ${petName}'s ${serviceName}?`;
+			case "requested_time":
+				return "If you'd like to continue, what time would you prefer that day?";
+			case "customer_name":
+				return "If you'd like to continue, what name should I put on the appointment?";
+			case "contact_phone":
+				return "If you'd like to continue, what phone number should we use for the appointment?";
+			default:
+				return undefined;
+		}
+	}
+
 	private applyConfirmedContactPhone(
 		interpretedMessage: InterpretedMessage,
 		conversation: Conversation,
@@ -197,7 +450,8 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 			if (!conversation.contactPhone) {
 				return this.ask(
 					conversation,
-					"Which contact phone number would you like to confirm?",
+					"What phone number would you like us to use?",
+					"contact_phone",
 				);
 			}
 
@@ -271,16 +525,158 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 		);
 	}
 
-	private answerPricing(
+	private async answerPricing(
 		interpretedMessage: InterpretedMessage,
 		conversation: Conversation,
-	): ConversationResponse {
-		return this.finishWithOutcome(
-			conversation,
+	): Promise<ConversationResponse> {
+		if (!interpretedMessage.serviceName && !interpretedMessage.serviceId) {
+			return this.ask(
+				conversation,
+				"Which grooming service would you like pricing for?",
+				"service",
+			);
+		}
+
+		const outcome = this.dependencies.information.answerPricing(
+			interpretedMessage.serviceName ?? interpretedMessage.serviceId,
+			interpretedMessage.weightLb,
+		);
+
+		if (outcome.status === "needs_human") {
+			return this.beginPricingHandoff(interpretedMessage, conversation, outcome);
+		}
+
+		return this.finishWithOutcome(conversation, outcome);
+	}
+
+	private async beginPricingHandoff(
+		interpretedMessage: InterpretedMessage,
+		conversation: Conversation,
+		outcome: ConversationOutcome,
+		activeRequest?: Readonly<InterpretedMessage>,
+	): Promise<ConversationResponse> {
+		conversation.recordIntent("pricing");
+		const pricingRequest = this.buildPricingRequest(interpretedMessage, activeRequest);
+		const updatedRequest = conversation.updateActiveRequest(pricingRequest);
+		const contactPhoneResult = this.applyConfirmedContactPhone(updatedRequest, conversation);
+		if (contactPhoneResult) return contactPhoneResult;
+
+		return this.collectPricingHandoffDetails(updatedRequest, conversation, outcome);
+	}
+
+	private async collectPricingHandoffDetails(
+		pricingRequest: InterpretedMessage,
+		conversation: Conversation,
+		initialOutcome?: ConversationOutcome,
+	): Promise<ConversationResponse> {
+		const handoffReason =
+			initialOutcome?.summary ??
+			"A groomer needs to review this dog's size before we provide a price estimate.";
+
+		if (!conversation.contactPhone) {
+			if (pricingRequest.contactPhone) {
+				return this.ask(
+					conversation,
+					`${handoffReason} I have ${pricingRequest.contactPhone}. Is that the best number for the owner to call you back?`,
+					"contact_phone_confirmation",
+				);
+			}
+
+			return this.ask(
+				conversation,
+				`${handoffReason} What phone number should the owner use to call you back?`,
+				"contact_phone",
+			);
+		}
+
+		if (!pricingRequest.customerName) {
+			return this.ask(
+				conversation,
+				"What name should the owner use when calling you back?",
+				"customer_name",
+			);
+		}
+
+		if (!pricingRequest.petName) {
+			return this.ask(conversation, "What is your dog's name?", "pet_name");
+		}
+
+		const service = this.findService(pricingRequest);
+		const outcome =
+			initialOutcome ??
 			this.dependencies.information.answerPricing(
-				interpretedMessage.serviceName ?? interpretedMessage.serviceId,
-				interpretedMessage.weightLb,
-			),
+				service?.id ?? pricingRequest.serviceName ?? pricingRequest.serviceId,
+				pricingRequest.weightLb,
+			);
+
+		if (outcome.status !== "needs_human") {
+			return this.finishWithOutcome(conversation, outcome);
+		}
+
+		return this.escalatePricingReview(pricingRequest, conversation, outcome);
+	}
+
+	private buildPricingRequest(
+		interpretedMessage: InterpretedMessage,
+		activeRequest?: Readonly<InterpretedMessage>,
+	): InterpretedMessage {
+		return {
+			...(activeRequest ?? {}),
+			...interpretedMessage,
+			intent: "pricing",
+			...(activeRequest?.serviceId && !interpretedMessage.serviceId
+				? { serviceId: activeRequest.serviceId }
+				: {}),
+			...(activeRequest?.serviceName && !interpretedMessage.serviceName
+				? { serviceName: activeRequest.serviceName }
+				: {}),
+			...(activeRequest?.weightLb !== undefined && interpretedMessage.weightLb === undefined
+				? { weightLb: activeRequest.weightLb }
+				: {}),
+		};
+	}
+
+	private async escalatePricingReview(
+		interpretedMessage: InterpretedMessage,
+		conversation: Conversation,
+		outcome: ConversationOutcome,
+		activeRequest?: Readonly<InterpretedMessage>,
+	): Promise<ConversationResponse> {
+		const pricingRequest = this.buildPricingRequest(interpretedMessage, activeRequest);
+		const service = this.findService(pricingRequest);
+		const notification = [
+			"Pricing review required for an oversized dog.",
+			`Business: ${this.business.name}`,
+			`Conversation: ${conversation.id}`,
+			`Customer: ${pricingRequest.customerName ?? "Not provided"}`,
+			`Contact phone: ${conversation.contactPhone ?? pricingRequest.contactPhone ?? "Not provided"}`,
+			`Pet: ${pricingRequest.petName ?? "Not provided"}`,
+			`Service: ${service?.name ?? pricingRequest.serviceName ?? pricingRequest.serviceId ?? "Not provided"}`,
+			`Weight: ${pricingRequest.weightLb !== undefined ? `${pricingRequest.weightLb} lb` : "Not provided"}`,
+			`Reason: ${outcome.summary}`,
+		].join("\n");
+
+		try {
+			await this.dependencies.ownerNotifier.notify(notification);
+			conversation.markOwnerHandoffNotified();
+		} catch (error) {
+			console.error("Pricing handoff notification failed.", {
+				businessId: conversation.businessId,
+				conversationId: conversation.id,
+				errorName: error instanceof Error ? error.constructor.name : "UnknownError",
+			});
+
+			return this.finish(
+				conversation,
+				`${outcome.summary} I could not reach the owner notification service, so please contact the shop directly as well.`,
+				outcome,
+			);
+		}
+
+		return this.finish(
+			conversation,
+			`${outcome.summary} I’ve sent the details to the owner, and they will call you back.`,
+			outcome,
 		);
 	}
 
@@ -330,47 +726,97 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 	): Promise<ConversationResponse> {
 		const contactPhone = this.getContactPhone(interpretedMessage, conversation);
 		if (!contactPhone) {
+			if (interpretedMessage.contactPhone) {
+				return this.ask(
+					conversation,
+					`I have ${interpretedMessage.contactPhone}. Is that the best number to use for the appointment?`,
+					"contact_phone_confirmation",
+				);
+			}
+
 			return this.ask(
 				conversation,
-				"Before booking, please provide and explicitly confirm the contact phone number for the appointment.",
+				"What phone number should we use for the appointment?",
+				"contact_phone",
 			);
 		}
 
 		if (!interpretedMessage.customerName) {
-			return this.ask(conversation, "What name should I put on the appointment?");
-		}
-
-		const pet = this.createPetDetails(interpretedMessage);
-		if (!pet) {
 			return this.ask(
 				conversation,
-				"Please provide your dog's name, approximate weight, and rabies vaccination status.",
+				"What name should I put on the appointment?",
+				"customer_name",
 			);
+		}
+
+		if (!interpretedMessage.petName) {
+			return this.ask(conversation, "And what is your dog's name?", "pet_name");
+		}
+
+		if (interpretedMessage.weightLb === undefined) {
+			return this.ask(
+				conversation,
+				`About how much does ${interpretedMessage.petName} weigh in pounds?`,
+				"dog_weight",
+			);
+		}
+
+		if (interpretedMessage.rabiesVaccinationStatus === undefined) {
+			return this.ask(
+				conversation,
+				`Is ${interpretedMessage.petName}'s rabies vaccination up to date?`,
+				"rabies_status",
+			);
+		}
+
+		const pet: PetDetails = {
+			name: interpretedMessage.petName,
+			weightLb: interpretedMessage.weightLb,
+			rabiesVaccinationStatus: interpretedMessage.rabiesVaccinationStatus,
+		};
+
+		if (interpretedMessage.breedOrMix) pet.breedOrMix = interpretedMessage.breedOrMix;
+		if (interpretedMessage.healthConcerns)
+			pet.healthConcerns = interpretedMessage.healthConcerns;
+		if (interpretedMessage.behaviorConcerns) {
+			pet.behaviorConcerns = interpretedMessage.behaviorConcerns;
 		}
 
 		const service = this.findService(interpretedMessage);
 		if (!service) {
 			return this.ask(
 				conversation,
-				"Which configured grooming service would you like to book?",
+				`Which service would you like for ${pet.name}? We offer ${formatChoices(
+					this.business.services.map((availableService) => availableService.name),
+				)}.`,
+				"service",
 			);
+		}
+
+		if (!interpretedMessage.requestedDate) {
+			return this.ask(
+				conversation,
+				`What day works best for ${pet.name}'s ${service.name}?`,
+				"requested_date",
+			);
+		}
+
+		if (!interpretedMessage.requestedTime) {
+			return this.ask(conversation, "What time would you prefer that day?", "requested_time");
 		}
 
 		const slot = this.createRequestedSlot(
-			interpretedMessage,
+			interpretedMessage.requestedDate,
+			interpretedMessage.requestedTime,
 			getAppointmentDuration(this.business, service.durationMinutes, pet.weightLb),
 		);
-		if (!slot) {
-			return this.ask(
-				conversation,
-				"What date and time would you like for the appointment? Please use the shop's local time.",
-			);
-		}
 
 		if (interpretedMessage.confirmation !== true) {
+			const appointmentTime = formatLocalDateTime(slot.startAt, this.business.timezone);
 			return this.ask(
 				conversation,
-				`I can book ${service.name} for ${pet.name} at ${slot.startAt}. Please confirm these details to continue.`,
+				`Just to confirm: ${service.name} for ${pet.name} on ${appointmentTime}. Should I book it?`,
+				"appointment_confirmation",
 			);
 		}
 
@@ -398,7 +844,10 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 
 		return this.finish(
 			conversation,
-			`Your ${service.name} appointment for ${pet.name} is booked.`,
+			`You're all set—${pet.name}'s ${service.name} is booked for ${formatLocalDateTime(
+				appointment.startAt,
+				this.business.timezone,
+			)}.`,
 			outcome,
 		);
 	}
@@ -409,10 +858,7 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 	): Promise<ConversationResponse> {
 		const identity = this.getAppointmentIdentity(interpretedMessage, conversation);
 		if (!identity) {
-			return this.ask(
-				conversation,
-				"To find the appointment, please confirm the contact phone, customer name, and pet name.",
-			);
+			return this.askForMissingAppointmentIdentity(interpretedMessage, conversation);
 		}
 
 		const lookup = await this.findAppointment(identity, interpretedMessage, conversation);
@@ -421,19 +867,35 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 			return this.ask(conversation, "I could not find a unique appointment to reschedule.");
 		}
 
-		const durationMinutes = this.getDurationMinutes(lookup.appointment);
-		const slot = this.createRequestedSlot(interpretedMessage, durationMinutes);
-		if (!slot) {
+		if (!interpretedMessage.requestedDate) {
 			return this.ask(
 				conversation,
-				"What new date and time would you like for the appointment? Please use the shop's local time.",
+				"What new date would you like for the appointment?",
+				"requested_date",
 			);
 		}
 
-		if (interpretedMessage.confirmation !== true) {
+		if (!interpretedMessage.requestedTime) {
 			return this.ask(
 				conversation,
-				`I found ${lookup.appointment.petName}'s appointment. Please confirm moving it to ${slot.startAt}.`,
+				"What time would you like on that date?",
+				"requested_time",
+			);
+		}
+
+		const durationMinutes = this.getDurationMinutes(lookup.appointment);
+		const slot = this.createRequestedSlot(
+			interpretedMessage.requestedDate,
+			interpretedMessage.requestedTime,
+			durationMinutes,
+		);
+
+		if (interpretedMessage.confirmation !== true) {
+			const appointmentTime = formatLocalDateTime(slot.startAt, this.business.timezone);
+			return this.ask(
+				conversation,
+				`I found ${lookup.appointment.petName}'s appointment. Would you like me to move it to ${appointmentTime}?`,
+				"appointment_confirmation",
 			);
 		}
 
@@ -453,7 +915,10 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 
 		return this.finish(
 			conversation,
-			`The appointment is rescheduled to ${appointment.startAt}.`,
+			`The appointment is now scheduled for ${formatLocalDateTime(
+				appointment.startAt,
+				this.business.timezone,
+			)}.`,
 			outcome,
 		);
 	}
@@ -464,10 +929,7 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 	): Promise<ConversationResponse> {
 		const identity = this.getAppointmentIdentity(interpretedMessage, conversation);
 		if (!identity) {
-			return this.ask(
-				conversation,
-				"To find the appointment, please confirm the contact phone, customer name, and pet name.",
-			);
+			return this.askForMissingAppointmentIdentity(interpretedMessage, conversation);
 		}
 
 		const lookup = await this.findAppointment(identity, interpretedMessage, conversation);
@@ -479,7 +941,11 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 		if (interpretedMessage.confirmation !== true) {
 			return this.ask(
 				conversation,
-				`I found ${lookup.appointment.petName}'s appointment at ${lookup.appointment.startAt}. Please confirm cancellation.`,
+				`I found ${lookup.appointment.petName}'s appointment for ${formatLocalDateTime(
+					lookup.appointment.startAt,
+					this.business.timezone,
+				)}. Would you like me to cancel it?`,
+				"appointment_confirmation",
 			);
 		}
 
@@ -504,14 +970,15 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 	): Promise<ConversationResponse> {
 		const identity = this.getAppointmentIdentity(interpretedMessage, conversation);
 		if (!identity) {
-			return this.ask(
-				conversation,
-				"To find the appointment, please confirm the contact phone, customer name, and pet name.",
-			);
+			return this.askForMissingAppointmentIdentity(interpretedMessage, conversation);
 		}
 
 		if (interpretedMessage.minutesLate === undefined) {
-			return this.ask(conversation, "How many minutes late do you expect to be?");
+			return this.ask(
+				conversation,
+				"How many minutes late do you expect to be?",
+				"minutes_late",
+			);
 		}
 
 		const lookup = await this.findAppointment(identity, interpretedMessage, conversation);
@@ -540,15 +1007,36 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 		conversation: Conversation,
 	): Promise<ConversationResponse> {
 		const contactPhone = this.getContactPhone(interpretedMessage, conversation);
-		if (!contactPhone || !interpretedMessage.customerName) {
+		if (!contactPhone) {
+			if (interpretedMessage.contactPhone) {
+				return this.ask(
+					conversation,
+					`Please confirm that ${interpretedMessage.contactPhone} is the contact number for this complaint.`,
+					"contact_phone_confirmation",
+				);
+			}
+
 			return this.ask(
 				conversation,
-				"To record the complaint, please confirm the contact phone and customer name.",
+				"What contact phone number should I use for this complaint?",
+				"contact_phone",
+			);
+		}
+
+		if (!interpretedMessage.customerName) {
+			return this.ask(
+				conversation,
+				"What customer name should I attach to this complaint?",
+				"customer_name",
 			);
 		}
 
 		if (!interpretedMessage.complaintCategory) {
-			return this.ask(conversation, "What part of the experience would you like to report?");
+			return this.ask(
+				conversation,
+				"What part of the experience would you like to report?",
+				"complaint_category",
+			);
 		}
 
 		const details = interpretedMessage.complaintDetails ?? message.trim();
@@ -586,10 +1074,7 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 		const identity = this.getAppointmentIdentity(interpretedMessage, conversation);
 		if (!identity) {
 			return {
-				response: this.ask(
-					conversation,
-					"Please confirm the customer name and pet name so I can attach this complaint to the right appointment.",
-				),
+				response: this.askForMissingAppointmentIdentity(interpretedMessage, conversation),
 			};
 		}
 
@@ -630,6 +1115,39 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 		};
 	}
 
+	private askForMissingAppointmentIdentity(
+		interpretedMessage: InterpretedMessage,
+		conversation: Conversation,
+	): ConversationResponse {
+		const contactPhone = this.getContactPhone(interpretedMessage, conversation);
+
+		if (!contactPhone) {
+			if (interpretedMessage.contactPhone) {
+				return this.ask(
+					conversation,
+					`Please confirm that ${interpretedMessage.contactPhone} is the contact number for the appointment.`,
+					"contact_phone_confirmation",
+				);
+			}
+
+			return this.ask(
+				conversation,
+				"What contact phone number is on the appointment?",
+				"contact_phone",
+			);
+		}
+
+		if (!interpretedMessage.customerName) {
+			return this.ask(
+				conversation,
+				"What customer name is on the appointment?",
+				"customer_name",
+			);
+		}
+
+		return this.ask(conversation, "What is the pet's name on the appointment?", "pet_name");
+	}
+
 	private getContactPhone(
 		interpretedMessage: InterpretedMessage,
 		conversation: Conversation,
@@ -637,28 +1155,6 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 		if (conversation.contactPhone) return conversation.contactPhone;
 		if (interpretedMessage.contactPhoneConfirmed) return interpretedMessage.contactPhone;
 		return undefined;
-	}
-
-	private createPetDetails(message: InterpretedMessage): PetDetails | undefined {
-		if (
-			!message.petName ||
-			message.weightLb === undefined ||
-			message.rabiesVaccinationStatus === undefined
-		) {
-			return undefined;
-		}
-
-		const pet: PetDetails = {
-			name: message.petName,
-			weightLb: message.weightLb,
-			rabiesVaccinationStatus: message.rabiesVaccinationStatus,
-		};
-
-		if (message.breedOrMix) pet.breedOrMix = message.breedOrMix;
-		if (message.healthConcerns) pet.healthConcerns = message.healthConcerns;
-		if (message.behaviorConcerns) pet.behaviorConcerns = message.behaviorConcerns;
-
-		return pet;
 	}
 
 	private findService(
@@ -679,20 +1175,11 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 	}
 
 	private createRequestedSlot(
-		message: InterpretedMessage,
+		requestedDate: string,
+		requestedTime: string,
 		durationMinutes: number,
-	): AppointmentSlot | undefined {
-		if (message.requestedStartAt && message.requestedEndAt) {
-			return new AppointmentSlot(message.requestedStartAt, message.requestedEndAt);
-		}
-
-		if (!message.requestedDate || !message.requestedTime) return undefined;
-
-		const startAt = localDateTimeToDate(
-			message.requestedDate,
-			message.requestedTime,
-			this.business.timezone,
-		);
+	): AppointmentSlot {
+		const startAt = localDateTimeToDate(requestedDate, requestedTime, this.business.timezone);
 		const endAt = new Date(startAt.getTime() + durationMinutes * 60_000);
 		return new AppointmentSlot(startAt.toISOString(), endAt.toISOString());
 	}
@@ -730,12 +1217,22 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 		return { appointment };
 	}
 
-	private ask(conversation: Conversation, reply: string): ConversationResponse {
-		return this.finish(
+	private ask(
+		conversation: Conversation,
+		reply: string,
+		expectedCustomerField?: ExpectedCustomerField,
+	): ConversationResponse {
+		const response = this.finish(
 			conversation,
 			reply,
 			createConversationOutcome("needs_information", reply),
 		);
+
+		if (expectedCustomerField) {
+			conversation.expectCustomerField(expectedCustomerField);
+		}
+
+		return response;
 	}
 
 	private finishWithOutcome(
@@ -757,8 +1254,20 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 		reply: string,
 		outcome: ConversationOutcome,
 	): ConversationResponse {
+		if (outcome.status !== "needs_information") {
+			conversation.clearExpectedCustomerField();
+		}
+
 		conversation.recordOutcome(outcome);
 		conversation.addMessage("receptionist", reply);
 		return { reply, outcome };
 	}
+}
+
+function formatChoices(choices: readonly string[]): string {
+	if (choices.length === 0) return "no services";
+	if (choices.length === 1) return choices[0] ?? "";
+	if (choices.length === 2) return `${choices[0]} or ${choices[1]}`;
+
+	return `${choices.slice(0, -1).join(", ")}, or ${choices.at(-1)}`;
 }

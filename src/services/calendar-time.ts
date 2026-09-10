@@ -30,6 +30,19 @@ export function localDateTimeToDate(localDate: string, localTime: string, timeZo
 	return dateTime.toJSDate();
 }
 
+export function formatLocalDateTime(isoDateTime: string, timeZone: string): string {
+	const dateTime = DateTime.fromISO(isoDateTime, { setZone: true }).setZone(timeZone);
+
+	if (!dateTime.isValid) {
+		throw new Error(`Invalid date/time or time zone: ${isoDateTime} ${timeZone}`);
+	}
+
+	const localDateTime = dateTime.toFormat("cccc, LLLL d 'at' h:mm a");
+	return dateTime.offsetNameShort
+		? `${localDateTime} ${dateTime.offsetNameShort}`
+		: localDateTime;
+}
+
 function getZonedDateTime(date: Date, timeZone: string): DateTime {
 	const dateTime = DateTime.fromJSDate(date, { zone: timeZone });
 

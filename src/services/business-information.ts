@@ -54,6 +54,14 @@ export class BusinessInformationService {
 			);
 		}
 
+		const onlyAvailableService = availableServices[0];
+		if (onlyAvailableService && availableServices.length === 1) {
+			return createConversationOutcome(
+				"answered",
+				formatServiceDetails(onlyAvailableService),
+			);
+		}
+
 		return createConversationOutcome(
 			"answered",
 			`We offer ${formatServiceNames(availableServices)}.`,
@@ -242,6 +250,19 @@ function findWeekday(dayName: string): string | undefined {
 
 function formatServiceNames(services: readonly GroomingService[]): string {
 	return formatTextList(services.map((service) => service.name));
+}
+
+function formatServiceDetails(service: GroomingService): string {
+	return `${service.name} includes ${formatTextList(service.includedItems)}. It starts at $${service.startingPriceDollars} and takes about ${formatDuration(service.durationMinutes)}.`;
+}
+
+function formatDuration(durationMinutes: number): string {
+	if (durationMinutes % 60 === 0) {
+		const hours = durationMinutes / 60;
+		return hours === 1 ? "1 hour" : `${hours} hours`;
+	}
+
+	return `${durationMinutes} minutes`;
 }
 
 function formatTextList(values: readonly string[]): string {

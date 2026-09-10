@@ -60,6 +60,46 @@ test("stores a confirmed contact phone separately from caller metadata", () => {
 	assert.equal(conversation.contactPhone, "+14155550100");
 });
 
+test("preserves structured facts while collecting one active request", () => {
+	const conversation = new Conversation(conversationDetails);
+	conversation.updateActiveRequest({
+		intent: "pricing",
+		weightLb: 35,
+	});
+	conversation.recordOutcome(
+		createConversationOutcome("needs_information", "Which service would you like?"),
+	);
+	conversation.expectCustomerField("service");
+
+	const activeRequest = conversation.updateActiveRequest({
+		intent: "unknown",
+		serviceId: "full-groom",
+	});
+
+	assert.deepEqual(activeRequest, {
+		intent: "pricing",
+		weightLb: 35,
+		serviceId: "full-groom",
+	});
+	assert.equal(conversation.expectedCustomerField, undefined);
+});
+
+test("does not reuse completed request facts for a new request", () => {
+	const conversation = new Conversation(conversationDetails);
+	conversation.updateActiveRequest({
+		intent: "pricing",
+		serviceId: "bath",
+		weightLb: 35,
+	});
+	conversation.recordOutcome(createConversationOutcome("answered", "Bath starts at $45."));
+
+	const activeRequest = conversation.updateActiveRequest({
+		intent: "book_appointment",
+	});
+
+	assert.deepEqual(activeRequest, { intent: "book_appointment" });
+});
+
 test("rejects missing identity and empty messages", () => {
 	assert.throws(
 		() => new Conversation({ ...conversationDetails, id: " " }),

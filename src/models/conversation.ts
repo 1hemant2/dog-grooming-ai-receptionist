@@ -1,6 +1,11 @@
 import { randomUUID } from "node:crypto";
 
-import type { ConversationOutcome, ReceptionistIntent } from "./receptionist.js";
+import type {
+	ConversationOutcome,
+	ExpectedCustomerField,
+	InterpretedMessage,
+	ReceptionistIntent,
+} from "./receptionist.js";
 import { isValidPhoneNumber } from "./customer.js";
 
 export interface ReceiveMessageInput {
@@ -39,7 +44,10 @@ export class Conversation {
 	private callerPhoneValue: string | undefined;
 	private contactPhoneValue: string | undefined;
 	private readonly intentHistory: ReceptionistIntent[] = [];
+	private activeRequestValue: InterpretedMessage | undefined;
+	private expectedCustomerFieldValue: ExpectedCustomerField | undefined;
 	private outcomeValue: ConversationOutcome | undefined;
+	private ownerHandoffNotifiedValue = false;
 	private statusValue: ConversationStatus = "active";
 
 	constructor(details: ConversationDetails) {
@@ -77,12 +85,24 @@ export class Conversation {
 		return this.intentHistory;
 	}
 
+	get activeRequest(): Readonly<InterpretedMessage> | undefined {
+		return this.activeRequestValue;
+	}
+
+	get expectedCustomerField(): ExpectedCustomerField | undefined {
+		return this.expectedCustomerFieldValue;
+	}
+
 	get outcome(): ConversationOutcome | undefined {
 		return this.outcomeValue;
 	}
 
 	get status(): ConversationStatus {
 		return this.statusValue;
+	}
+
+	get ownerHandoffNotified(): boolean {
+		return this.ownerHandoffNotifiedValue;
 	}
 
 	associateCallerPhone(callerPhone: string): void {
@@ -126,6 +146,50 @@ export class Conversation {
 		if (!this.intentHistory.includes(intent)) {
 			this.intentHistory.push(intent);
 		}
+	}
+
+	updateActiveRequest(interpretedMessage: InterpretedMessage): InterpretedMessage {
+		this.requireActive("update the active request for");
+
+		const previousRequest = this.activeRequestValue;
+		const continuesPreviousRequest =
+			(previousRequest !== undefined &&
+				interpretedMessage.intent === previousRequest.intent &&
+				(this.outcomeValue?.status === "needs_information" ||
+					previousRequest.intent === "pricing")) ||
+			(interpretedMessage.intent === "unknown" &&
+				this.outcomeValue?.status === "needs_information");
+
+		if (previousRequest && continuesPreviousRequest) {
+			this.activeRequestValue = {
+				...previousRequest,
+				...interpretedMessage,
+				intent:
+					interpretedMessage.intent === "unknown"
+						? previousRequest.intent
+						: interpretedMessage.intent,
+			};
+		} else {
+			this.activeRequestValue = { ...interpretedMessage };
+		}
+
+		this.expectedCustomerFieldValue = undefined;
+		return { ...this.activeRequestValue };
+	}
+
+	expectCustomerField(field: ExpectedCustomerField): void {
+		this.requireActive("set the expected customer field for");
+		this.expectedCustomerFieldValue = field;
+	}
+
+	clearExpectedCustomerField(): void {
+		this.requireActive("clear the expected customer field for");
+		this.expectedCustomerFieldValue = undefined;
+	}
+
+	markOwnerHandoffNotified(): void {
+		this.requireActive("mark the owner handoff for");
+		this.ownerHandoffNotifiedValue = true;
 	}
 
 	recordOutcome(outcome: ConversationOutcome): void {

@@ -54,6 +54,8 @@ export const APPLICATION_CONFIG = {
 	maxMessageCharacters: 4_000,
 	maxConversationIdCharacters: 128,
 	externalRequestTimeoutMs: 30_000,
+	interpreterHistoryMessageLimit: 6,
+	interpreterMaxOutputTokens: 300,
 };
 
 export const APPLICATION_PATTERNS = {
@@ -67,6 +69,10 @@ export const BUSINESS_CONFIGS: BusinessConfig[] = [
 		id: DEFAULT_BUSINESS_ID,
 		name: "Maple Street Dog Grooming",
 		timezone: "America/Los_Angeles",
+		phone: {
+			countryCallingCode: "1",
+			nationalNumberDigits: 10,
+		},
 		openingTime: "09:00",
 		closingTime: "17:00",
 		closedDays: ["Sunday"],
@@ -94,18 +100,41 @@ export const BUSINESS_CONFIGS: BusinessConfig[] = [
 				name: "Bath",
 				durationMinutes: 60,
 				startingPriceDollars: 45,
+				includedItems: [
+					"shampoo and conditioner",
+					"blow-drying",
+					"brushing",
+					"ear cleaning",
+					"a nail trim",
+				],
 			},
 			{
 				id: "bath-and-trim",
 				name: "Bath and Trim",
 				durationMinutes: 90,
 				startingPriceDollars: 70,
+				includedItems: [
+					"shampoo and conditioner",
+					"blow-drying",
+					"brushing",
+					"ear cleaning",
+					"a nail trim",
+					"light trimming around the face, feet, and sanitary areas",
+				],
 			},
 			{
 				id: "full-groom",
 				name: "Full Groom",
 				durationMinutes: 120,
 				startingPriceDollars: 95,
+				includedItems: [
+					"shampoo and conditioner",
+					"blow-drying",
+					"brushing",
+					"ear cleaning",
+					"a nail trim",
+					"a complete haircut and style",
+				],
 			},
 		],
 	},

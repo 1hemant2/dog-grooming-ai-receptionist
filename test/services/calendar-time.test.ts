@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import {
 	addLocalDays,
+	formatLocalDateTime,
 	getDayName,
 	getLocalDate,
 	localDateTimeToDate,
@@ -22,4 +23,11 @@ test("reads and advances dates in the business timezone", () => {
 	assert.equal(getLocalDate(date, "America/Los_Angeles"), "2026-09-06");
 	assert.equal(getDayName(date, "America/Los_Angeles"), "Sunday");
 	assert.equal(addLocalDays("2026-09-06", 1), "2026-09-07");
+});
+
+test("formats a stored UTC appointment in the business timezone", () => {
+	assert.equal(
+		formatLocalDateTime("2026-09-11T18:00:00.000Z", "America/Los_Angeles"),
+		"Friday, September 11 at 11:00 AM PDT",
+	);
 });

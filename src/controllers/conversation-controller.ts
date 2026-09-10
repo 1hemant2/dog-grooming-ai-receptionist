@@ -18,13 +18,32 @@ interface ConversationRequestBody {
 	conversationId: string | undefined;
 }
 
+interface ConversationRequestTiming {
+	requestStartedAt: Date;
+	timerStartedAt: bigint;
+	businessId?: string;
+	conversationId?: string;
+	messageCharacters?: number;
+	historyMessageCount?: number;
+	outcomeStatus?: string;
+	errorName?: string;
+	appointmentId?: string;
+}
+
 export function createReceiveMessageController(
 	conversationStore: InMemoryConversationStore,
 	resolveOrchestrator?: (businessId: string) => ConversationMessageHandler | undefined,
 ): RequestHandler {
 	return async function receiveMessage(request: Request, response: Response): Promise<void> {
+		const timing: ConversationRequestTiming = {
+			requestStartedAt: new Date(),
+			timerStartedAt: process.hrtime.bigint(),
+		};
+		registerResponseTimingLog(response, timing);
+
 		try {
 			const businessId = readBusinessId(request);
+			timing.businessId = businessId;
 			const businessConfig = findBusinessConfig(businessId);
 
 			if (!businessConfig) {
@@ -33,6 +52,7 @@ export function createReceiveMessageController(
 			}
 
 			const body = readConversationBody(request);
+			timing.messageCharacters = body.message.length;
 			const conversationInput: ReceiveMessageInput = {
 				businessId,
 				message: body.message,
@@ -54,18 +74,23 @@ export function createReceiveMessageController(
 			}
 
 			const conversation = conversationStore.getConversation(lookupInput);
+			timing.conversationId = conversationId;
+			timing.historyMessageCount = conversation.messages.length;
+			console.info("Conversation request received.", {
+				businessId,
+				conversationId,
+				requestStartedAt: timing.requestStartedAt.toISOString(),
+				messageCharacters: timing.messageCharacters,
+				historyMessageCount: timing.historyMessageCount,
+			});
 			const orchestrator = resolveOrchestrator?.(businessId);
 
 			if (orchestrator) {
 				const result = await orchestrator.handleMessage(body.message, conversation);
-				console.info("Conversation request completed.", {
-					businessId,
-					conversationId,
-					outcomeStatus: result.outcome.status,
-					...(result.outcome.appointmentId
-						? { appointmentId: result.outcome.appointmentId }
-						: {}),
-				});
+				timing.outcomeStatus = result.outcome.status;
+				if (result.outcome.appointmentId) {
+					timing.appointmentId = result.outcome.appointmentId;
+				}
 
 				response.status(200).json({
 					conversationId,
@@ -78,12 +103,14 @@ export function createReceiveMessageController(
 				return;
 			}
 
+			timing.outcomeStatus = "received";
 			response.status(202).json({
 				conversationId,
 				status: "received",
 				reply: `Thanks for contacting ${businessConfig.name}. Your message has been received.`,
 			});
 		} catch (error) {
+			timing.errorName = error instanceof Error ? error.constructor.name : "UnknownError";
 			handleConversationError(error, response);
 		}
 	};
@@ -94,8 +121,15 @@ export function createEndConversationController(
 	resolveOrchestrator?: (businessId: string) => ConversationMessageHandler | undefined,
 ): RequestHandler {
 	return async function endConversation(request: Request, response: Response): Promise<void> {
+		const timing: ConversationRequestTiming = {
+			requestStartedAt: new Date(),
+			timerStartedAt: process.hrtime.bigint(),
+		};
+		registerResponseTimingLog(response, timing);
+
 		try {
 			const businessId = readBusinessId(request);
+			timing.businessId = businessId;
 			const businessConfig = findBusinessConfig(businessId);
 
 			if (!businessConfig) {
@@ -116,6 +150,8 @@ export function createEndConversationController(
 			}
 
 			const conversation = conversationStore.getConversation(lookupInput);
+			timing.conversationId = conversationId;
+			timing.historyMessageCount = conversation.messages.length;
 			const orchestrator = resolveOrchestrator?.(businessId);
 
 			if (!orchestrator) {
@@ -126,11 +162,39 @@ export function createEndConversationController(
 			await orchestrator.endConversation(conversation);
 			conversationStore.endConversation(lookupInput);
 
+			timing.outcomeStatus = "ended";
 			response.status(200).json({ conversationId, status: "ended" });
 		} catch (error) {
+			timing.errorName = error instanceof Error ? error.constructor.name : "UnknownError";
 			handleConversationError(error, response);
 		}
 	};
+}
+
+function registerResponseTimingLog(response: Response, timing: ConversationRequestTiming): void {
+	response.once("finish", () => {
+		console.info("Conversation request completed.", {
+			...(timing.businessId ? { businessId: timing.businessId } : {}),
+			...(timing.conversationId ? { conversationId: timing.conversationId } : {}),
+			...(timing.outcomeStatus ? { outcomeStatus: timing.outcomeStatus } : {}),
+			...(timing.appointmentId ? { appointmentId: timing.appointmentId } : {}),
+			...(timing.errorName ? { errorName: timing.errorName } : {}),
+			requestStartedAt: timing.requestStartedAt.toISOString(),
+			responseSentAt: new Date().toISOString(),
+			durationMs: elapsedMilliseconds(timing.timerStartedAt),
+			responseStatusCode: response.statusCode,
+			...(timing.messageCharacters !== undefined
+				? { messageCharacters: timing.messageCharacters }
+				: {}),
+			...(timing.historyMessageCount !== undefined
+				? { historyMessageCount: timing.historyMessageCount }
+				: {}),
+		});
+	});
+}
+
+function elapsedMilliseconds(timerStartedAt: bigint): number {
+	return Math.round(Number(process.hrtime.bigint() - timerStartedAt) / 1_000_000);
 }
 
 function readBusinessId(request: Request): string {

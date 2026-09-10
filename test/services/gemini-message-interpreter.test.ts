@@ -6,6 +6,10 @@ import type { GenerateContentParameters } from "@google/genai";
 import { APPLICATION_CONFIG, findBusinessConfig } from "../../src/config/constants.js";
 import { Conversation } from "../../src/models/conversation.js";
 import {
+	createConversationOutcome,
+	type ExpectedCustomerField,
+} from "../../src/models/receptionist.js";
+import {
 	GeminiMessageInterpreter,
 	type GeminiContentClient,
 } from "../../src/services/gemini-message-interpreter.js";
@@ -21,6 +25,7 @@ const configuredBusiness = business;
 
 class FakeGeminiClient implements GeminiContentClient {
 	parameters: GenerateContentParameters | undefined;
+	callCount = 0;
 	responseText = JSON.stringify({
 		intent: "book_appointment",
 		customerName: "Alex Morgan",
@@ -39,10 +44,21 @@ class FakeGeminiClient implements GeminiContentClient {
 		generateContent: async (
 			parameters: GenerateContentParameters,
 		): Promise<{ text: string | undefined }> => {
+			this.callCount += 1;
 			this.parameters = parameters;
 			return { text: this.responseText };
 		},
 	};
+}
+
+function createConversationAwaiting(expectedCustomerField: ExpectedCustomerField): Conversation {
+	const conversation = createConversation();
+	conversation.updateActiveRequest({ intent: "book_appointment" });
+	conversation.recordOutcome(
+		createConversationOutcome("needs_information", "More information is required."),
+	);
+	conversation.expectCustomerField(expectedCustomerField);
+	return conversation;
 }
 
 function createConversation(): Conversation {
@@ -78,6 +94,17 @@ test("converts Gemini JSON into validated receptionist fields", async () => {
 	);
 	assert.equal(client.parameters?.config?.responseMimeType, "application/json");
 	assert.match(String(client.parameters?.contents), /Maple Street Dog Grooming/);
+	assert.match(String(client.parameters?.contents), /Extract facts stated/);
+	assert.match(String(client.parameters?.contents), /clearly starts a new request/);
+	assert.match(String(client.parameters?.contents), /Current local date:/);
+	assert.equal(
+		client.parameters?.config?.maxOutputTokens,
+		APPLICATION_CONFIG.interpreterMaxOutputTokens,
+	);
+	assert.doesNotMatch(
+		JSON.stringify(client.parameters?.config?.responseJsonSchema),
+		/requestedStartAt|requestedEndAt/,
+	);
 });
 
 test("rejects malformed JSON from Gemini", async () => {
@@ -98,7 +125,7 @@ test("rejects malformed JSON from Gemini", async () => {
 	);
 });
 
-test("rejects fields that could bypass domain validation", async () => {
+test("normalizes a formatted US contact phone before domain validation", async () => {
 	const client = new FakeGeminiClient();
 	client.responseText = JSON.stringify({
 		intent: "book_appointment",
@@ -109,8 +136,159 @@ test("rejects fields that could bypass domain validation", async () => {
 		client,
 	);
 
-	await assert.rejects(
-		interpreter.interpret("Book an appointment.", configuredBusiness, createConversation()),
-		MessageInterpreterError,
+	const result = await interpreter.interpret(
+		"Use 415-555-0100.",
+		configuredBusiness,
+		createConversation(),
 	);
+
+	assert.equal(result.contactPhone, "+14155550100");
+});
+
+test("ignores a contact phone that cannot be normalized safely", async () => {
+	const client = new FakeGeminiClient();
+	client.responseText = JSON.stringify({
+		intent: "book_appointment",
+		contactPhone: "555",
+	});
+	const interpreter = new GeminiMessageInterpreter(
+		{ apiKey: "test-key", model: "test-model" },
+		client,
+	);
+
+	const result = await interpreter.interpret(
+		"Use 555.",
+		configuredBusiness,
+		createConversation(),
+	);
+
+	assert.equal(result.contactPhone, undefined);
+});
+
+test("reads an expected phone number locally without calling Gemini", async () => {
+	const client = new FakeGeminiClient();
+	const interpreter = new GeminiMessageInterpreter(
+		{ apiKey: "test-key", model: "test-model" },
+		client,
+	);
+
+	const result = await interpreter.interpret(
+		"415-555-0100",
+		configuredBusiness,
+		createConversationAwaiting("contact_phone"),
+	);
+
+	assert.equal(result.contactPhone, "+14155550100");
+	assert.equal(client.callCount, 0);
+});
+
+test("reads an expected customer name locally without calling Gemini", async () => {
+	const client = new FakeGeminiClient();
+	const interpreter = new GeminiMessageInterpreter(
+		{ apiKey: "test-key", model: "test-model" },
+		client,
+	);
+
+	const result = await interpreter.interpret(
+		"My name is Hemant Kumar",
+		configuredBusiness,
+		createConversationAwaiting("customer_name"),
+	);
+
+	assert.equal(result.customerName, "Hemant Kumar");
+	assert.equal(client.callCount, 0);
+});
+
+test("resolves an expected natural date to the next occurrence locally", async () => {
+	const client = new FakeGeminiClient();
+	const interpreter = new GeminiMessageInterpreter(
+		{ apiKey: "test-key", model: "test-model" },
+		client,
+		() => new Date("2026-09-10T12:00:00.000Z"),
+	);
+
+	const result = await interpreter.interpret(
+		"11th September",
+		configuredBusiness,
+		createConversationAwaiting("requested_date"),
+	);
+
+	assert.equal(result.requestedDate, "2026-09-11");
+	assert.equal(client.callCount, 0);
+});
+
+test("recognizes a configured service details question locally", async () => {
+	const client = new FakeGeminiClient();
+	const interpreter = new GeminiMessageInterpreter(
+		{ apiKey: "test-key", model: "test-model" },
+		client,
+	);
+
+	const result = await interpreter.interpret(
+		"Can you explain what Full Groom includes?",
+		configuredBusiness,
+		createConversation(),
+	);
+
+	assert.equal(result.intent, "services");
+	assert.equal(result.serviceId, "full-groom");
+	assert.equal(client.callCount, 0);
+});
+
+test("keeps the booking intent for an acknowledgement without a date", async () => {
+	const client = new FakeGeminiClient();
+	const interpreter = new GeminiMessageInterpreter(
+		{ apiKey: "test-key", model: "test-model" },
+		client,
+	);
+	const conversation = createConversationAwaiting("requested_date");
+
+	const result = await interpreter.interpret("Do it for Tommy", configuredBusiness, conversation);
+
+	assert.equal(result.intent, "book_appointment");
+	assert.equal(result.requestedDate, undefined);
+	assert.equal(client.callCount, 0);
+});
+
+test("ignores invalid optional Gemini fields instead of rejecting the message", async () => {
+	const client = new FakeGeminiClient();
+	client.responseText = JSON.stringify({
+		intent: "book_appointment",
+		requestedTime: "morning",
+		resolution: 42,
+		unexpectedModelField: "ignored",
+	});
+	const interpreter = new GeminiMessageInterpreter(
+		{ apiKey: "test-key", model: "test-model" },
+		client,
+	);
+
+	const result = await interpreter.interpret(
+		"Sometime that day",
+		configuredBusiness,
+		createConversation(),
+	);
+
+	assert.equal(result.intent, "book_appointment");
+	assert.equal(result.requestedTime, undefined);
+	assert.equal(result.resolution, undefined);
+});
+
+test("sends only the configured recent history window to Gemini", async () => {
+	const client = new FakeGeminiClient();
+	const interpreter = new GeminiMessageInterpreter(
+		{ apiKey: "test-key", model: "test-model" },
+		client,
+	);
+	const conversation = createConversation();
+
+	for (let index = 1; index <= 8; index += 1) {
+		conversation.addMessage(index % 2 === 0 ? "customer" : "receptionist", `turn-${index}`);
+	}
+
+	await interpreter.interpret("A new pricing question", configuredBusiness, conversation);
+
+	const prompt = String(client.parameters?.contents);
+	assert.doesNotMatch(prompt, /turn-1/);
+	assert.match(prompt, /turn-8/);
 });

@@ -54,6 +54,7 @@ export function createConversationOrchestratorResolver(): (
 				booking,
 				management,
 				support,
+				ownerNotifier,
 			}),
 		);
 	}

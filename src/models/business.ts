@@ -5,6 +5,7 @@ export interface GroomingService {
 	name: string;
 	durationMinutes: number;
 	startingPriceDollars: number;
+	includedItems: string[];
 }
 
 export interface BusinessSheetsConfig {
@@ -17,10 +18,16 @@ export interface BusinessCalendarConfig {
 	calendarId: string;
 }
 
+export interface BusinessPhoneConfig {
+	countryCallingCode: string;
+	nationalNumberDigits: number;
+}
+
 export interface BusinessConfig {
 	id: string;
 	name: string;
 	timezone: string;
+	phone: BusinessPhoneConfig;
 	openingTime: string;
 	closingTime: string;
 	closedDays: string[];
