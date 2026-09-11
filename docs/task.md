@@ -25,8 +25,8 @@ This is the implementation backlog. The approved Phase 1 behavior remains in
 - [x] T08 — Late arrivals, complaints, and human handoff
 - [x] T09 — LLM interpretation and conversation orchestration
 - [x] T10 — Reliability and safety checks
-- [~] T11 — Demo data, end-to-end verification, and documentation
-- [ ] T12 — Vapi contract, configuration, and security
+- [ ] T11 — Demo data, end-to-end verification, and documentation
+- [~] T12 — Vapi contract, configuration, and security
 - [ ] T13 — Vapi conversation turn adapter
 - [ ] T14 — Vapi call lifecycle and delivery safety
 - [ ] T15 — Voice end-to-end verification and documentation
@@ -246,7 +246,7 @@ Complete when:
 
 ## T11 — Demo data, end-to-end verification, and documentation
 
-Status: In progress
+Status: Pending
 
 Goal: Deliver a reproducible Phase 1 demonstration.
 
@@ -279,7 +279,7 @@ Complete when:
 
 ## T12 — Vapi contract, configuration, and security
 
-Status: Pending
+Status: In progress
 
 Goal: Define and secure the boundary between Vapi and the application.
 
@@ -310,15 +310,29 @@ Expected flow:
 1. Vapi sends trusted call metadata containing the call ID, caller number, and called number or assistant identity.
 2. The adapter resolves the business and creates or resumes the matching conversation.
 3. Each final customer utterance is passed to the existing conversation handler.
-4. The adapter returns the receptionist reply in the response format expected by Vapi.
-5. Existing services continue to perform availability, booking, rescheduling, cancellation, persistence, and owner notification.
+4. Fast responses are returned without playing an unnecessary waiting message.
+5. If the application has not responded after approximately 2.5 seconds, Vapi tells the caller, "I’m checking that for you. One moment, please."
+6. If processing is still running after approximately 7 seconds, Vapi tells the caller, "Thanks for your patience. I’m still working on that."
+7. When processing finishes, the adapter returns the receptionist's actual reply in the response format expected by Vapi.
+8. Existing services continue to perform availability, booking, rescheduling, cancellation, persistence, and owner notification.
+
+Latency behavior:
+
+- Waiting messages are triggered by elapsed response time, not by duplicating or inspecting the orchestrator's internal Gemini decision.
+- Keep the existing conversation orchestrator and its tested business behavior unchanged.
+- Configure waiting messages in Vapi when the backend is invoked as a tool. If a custom-LLM adapter is selected, implement the same behavior with a small adapter-level timer and streamed response.
+- Use an approximately 15-second voice request timeout and return a controlled failure message when it expires.
+- Do not automatically retry conversation turns or operations that may write to Calendar, Sheets, or Telegram.
+- Waiting messages improve the caller experience but do not count as completion of the requested operation.
 
 Complete when:
 
 - The existing text UI and `POST /conversations/messages` contract continue to work unchanged.
 - Interpretation and provider failures produce a safe voice response without exposing internal errors.
+- A response completed before the delay threshold does not play a waiting message.
+- A delayed response plays the configured waiting message without interrupting, replacing, or changing the final receptionist reply.
 - Timing logs include safe call and duration metadata without transcripts, phone numbers, credentials, or complete provider payloads.
-- Adapter tests cover multi-turn state, response formatting, and provider failures.
+- Adapter tests cover multi-turn state, response formatting, provider failures, and delayed-response timing.
 
 ## T14 — Vapi call lifecycle and delivery safety
 
