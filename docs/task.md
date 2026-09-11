@@ -26,7 +26,7 @@ This is the implementation backlog. The approved Phase 1 behavior remains in
 - [x] T09 — LLM interpretation and conversation orchestration
 - [x] T10 — Reliability and safety checks
 - [ ] T11 — Demo data, end-to-end verification, and documentation
-- [~] T12 — Vapi contract, configuration, and security
+- [x] T12 — Vapi contract, configuration, and security
 - [ ] T13 — Vapi conversation turn adapter
 - [ ] T14 — Vapi call lifecycle and delivery safety
 - [ ] T15 — Voice end-to-end verification and documentation
@@ -279,16 +279,17 @@ Complete when:
 
 ## T12 — Vapi contract, configuration, and security
 
-Status: In progress
+Status: Complete
 
 Goal: Define and secure the boundary between Vapi and the application.
 
-Decisions to confirm before implementation:
+Decisions:
 
-- Use a Vapi custom-LLM endpoint so the current backend remains the dialogue engine, or use Vapi's model with backend tools.
-- Decide whether Phase 2 demonstrates an inbound phone call, a browser-based Vapi call, or both.
-- Choose the public HTTPS deployment or tunnel used by Vapi during development.
-- Choose the Vapi request authentication method and required environment variables.
+- Use a Vapi API Request Tool to call a dedicated application adapter while the existing backend remains the dialogue engine.
+- Demonstrate an inbound phone call first; browser calling can be added later without changing the application boundary.
+- Use an ngrok HTTPS tunnel during local development.
+- Authenticate Vapi with a Bearer credential stored as `VAPI_SERVER_TOKEN`.
+- Map the trusted Vapi phone number to a configured business using `VAPI_PHONE_NUMBER` and `VAPI_BUSINESS_ID`.
 
 Complete when:
 

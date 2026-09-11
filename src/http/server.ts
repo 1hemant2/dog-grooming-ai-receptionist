@@ -2,13 +2,14 @@ import { createServer, type Server } from "node:http";
 
 import type { InMemoryConversationStore } from "../models/conversation.js";
 import type { ConversationMessageHandler } from "../services/conversation-orchestrator.js";
-import { createHttpApp } from "./app.js";
+import { createHttpApp, type VapiHttpOptions } from "./app.js";
 
 export function createHttpServer(
 	conversationStore: InMemoryConversationStore,
 	resolveOrchestrator?: (businessId: string) => ConversationMessageHandler | undefined,
+	vapi?: VapiHttpOptions,
 ): Server {
-	const app = createHttpApp(conversationStore, resolveOrchestrator);
+	const app = createHttpApp(conversationStore, resolveOrchestrator, vapi);
 	return createServer(app);
 }
 

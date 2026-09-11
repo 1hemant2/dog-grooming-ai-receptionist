@@ -1,4 +1,5 @@
 import type { BusinessConfig } from "../models/business.js";
+import { isValidPhoneNumber } from "../models/customer.js";
 
 const DEFAULT_PORT = 3000;
 const DEFAULT_BUSINESS_ID = "maple-street-dog-grooming";
@@ -65,12 +66,24 @@ export const APPLICATION_CONFIG = {
 };
 
 export const APPLICATION_PATTERNS = {
+	// Matches identifiers accepted by the in-memory conversation store and trusted voice providers.
+	conversationId: /^[a-zA-Z0-9_-]+$/,
 	// Matches a 24-hour time in HH:mm format, from 00:00 through 23:59.
 	time24Hour: /^(?:[01][0-9]|2[0-3]):[0-5][0-9]$/,
 	// Matches explicit customer commands that clear the current request.
 	conversationReset:
 		/^(?:(?:please|can we|i want to|i would like to|let s|lets)\s+)?(?:reset(?:\s+in between|\s+(?:the|this|that|current|my)\s+(?:request|booking|conversation|flow))?|start over|start again|begin again|(?:new|start a new) (?:request|conversation)|forget this|forget that|cancel (?:this|that) and start(?: over| again))$/i,
 };
+
+export interface VapiBusinessPhoneMapping {
+	businessId: string;
+	phoneNumber: string;
+}
+
+export interface VapiConfig {
+	serverToken: string;
+	businessPhoneMappings: VapiBusinessPhoneMapping[];
+}
 
 // Store business configurations in an array so new vendors can be added without changing request handling.
 export const BUSINESS_CONFIGS: BusinessConfig[] = [
@@ -158,6 +171,35 @@ export function findBusinessConfig(businessId: string): BusinessConfig | undefin
 	}
 
 	return undefined;
+}
+
+export function getVapiConfig(
+	environment: Record<string, string | undefined> = process.env,
+): VapiConfig | undefined {
+	const serverToken = environment.VAPI_SERVER_TOKEN?.trim();
+	const phoneNumber = environment.VAPI_PHONE_NUMBER?.trim();
+	const businessId = environment.VAPI_BUSINESS_ID?.trim() || DEFAULT_BUSINESS_ID;
+
+	if (!serverToken && !phoneNumber) {
+		return undefined;
+	}
+
+	if (!serverToken || !phoneNumber) {
+		throw new Error("VAPI_SERVER_TOKEN and VAPI_PHONE_NUMBER must be configured together");
+	}
+
+	if (!isValidPhoneNumber(phoneNumber)) {
+		throw new Error("VAPI_PHONE_NUMBER must use E.164 format");
+	}
+
+	if (!findBusinessConfig(businessId)) {
+		throw new Error(`VAPI_BUSINESS_ID references an unknown business: ${businessId}`);
+	}
+
+	return {
+		serverToken,
+		businessPhoneMappings: [{ businessId, phoneNumber }],
+	};
 }
 
 function getPort(): number {

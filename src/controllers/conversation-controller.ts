@@ -1,6 +1,10 @@
 import type { Request, RequestHandler, Response } from "express";
 
-import { APPLICATION_CONFIG, findBusinessConfig } from "../config/constants.js";
+import {
+	APPLICATION_CONFIG,
+	APPLICATION_PATTERNS,
+	findBusinessConfig,
+} from "../config/constants.js";
 import {
 	ConversationNotFoundError,
 	type ConversationLookupInput,
@@ -9,8 +13,6 @@ import {
 } from "../models/conversation.js";
 import { isValidPhoneNumber } from "../models/customer.js";
 import type { ConversationMessageHandler } from "../services/conversation-orchestrator.js";
-
-const CONVERSATION_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 interface ConversationRequestBody {
 	callerPhone?: string;
@@ -296,7 +298,7 @@ function isObject(value: unknown): value is Record<string, unknown> {
 function isValidConversationId(value: string): boolean {
 	return (
 		value.length <= APPLICATION_CONFIG.maxConversationIdCharacters &&
-		CONVERSATION_ID_PATTERN.test(value)
+		APPLICATION_PATTERNS.conversationId.test(value)
 	);
 }
 

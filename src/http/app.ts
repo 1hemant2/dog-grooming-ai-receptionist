@@ -1,19 +1,28 @@
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 
-import { APPLICATION_CONFIG } from "../config/constants.js";
+import { APPLICATION_CONFIG, type VapiConfig } from "../config/constants.js";
 import type { InMemoryConversationStore } from "../models/conversation.js";
+import type { VapiTurnHandler } from "../models/vapi.js";
 import { createConversationRouter } from "../routes/conversation-routes.js";
+import { createVapiRouter } from "../routes/vapi-routes.js";
 import type { ConversationMessageHandler } from "../services/conversation-orchestrator.js";
+
+export interface VapiHttpOptions {
+	config: VapiConfig;
+	turnHandler?: VapiTurnHandler;
+}
 
 export function createHttpApp(
 	conversationStore: InMemoryConversationStore,
 	resolveOrchestrator?: (businessId: string) => ConversationMessageHandler | undefined,
+	vapi?: VapiHttpOptions,
 ): Express {
 	const app = express();
 
 	app.use(express.json({ limit: APPLICATION_CONFIG.maxRequestBytes }));
 	app.get("/health", handleHealthCheck);
 	app.use("/conversations", createConversationRouter(conversationStore, resolveOrchestrator));
+	app.use("/vapi", createVapiRouter(vapi?.config, vapi?.turnHandler));
 	app.use(express.static("public"));
 	app.use(handleNotFound);
 	app.use(handleExpressError);
