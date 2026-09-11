@@ -55,6 +55,10 @@ export function isConversationResetRequest(message: string): boolean {
 	return APPLICATION_PATTERNS.conversationReset.test(normalizeWords(message));
 }
 
+export function isConversationEndRequest(message: string): boolean {
+	return APPLICATION_PATTERNS.conversationEnd.test(normalizeWords(message));
+}
+
 export function interpretExpectedAnswer(
 	message: string,
 	business: BusinessConfig,

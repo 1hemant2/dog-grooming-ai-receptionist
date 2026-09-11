@@ -32,7 +32,7 @@ import {
 } from "./appointment-management.js";
 import type { BusinessInformationService } from "./business-information.js";
 import { getAppointmentDuration } from "./calendar-availability.js";
-import { isConversationResetRequest } from "./customer-message-parser.js";
+import { isConversationEndRequest, isConversationResetRequest } from "./customer-message-parser.js";
 import type {
 	ComplaintRequest,
 	CustomerSupportService,
@@ -131,6 +131,20 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 	): Promise<ConversationResponse> {
 		if (conversation.businessId !== this.business.id) {
 			throw new Error("Conversation does not belong to the configured business");
+		}
+
+		if (isConversationEndRequest(message)) {
+			const outcome =
+				conversation.outcome ??
+				createConversationOutcome(
+					"needs_information",
+					"The customer ended the conversation before the request was completed.",
+				);
+			return this.finish(
+				conversation,
+				"Thanks for calling Maple Street Dog Grooming. Goodbye!",
+				outcome,
+			);
 		}
 
 		if (conversation.ownerHandoffNotified) {

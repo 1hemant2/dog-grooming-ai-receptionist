@@ -16,6 +16,7 @@ export interface VapiTurnResult {
 	conversationId: string;
 	status: ConversationOutcomeStatus;
 	reply: string;
+	endCall?: boolean;
 	appointmentId?: string;
 }
 

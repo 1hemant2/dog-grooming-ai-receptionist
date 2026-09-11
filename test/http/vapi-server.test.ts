@@ -123,6 +123,18 @@ test("rejects an invalid caller number", async () => {
 	assert.equal(receivedTurns.length, handledBeforeRequest);
 });
 
+test("allows a browser Vapi call without a resolved caller number", async () => {
+	const response = await sendVapiRequest({ callerPhone: "{{customer.number}}" });
+
+	assert.equal(response.status, 200);
+	assert.deepEqual(await response.json(), {
+		conversationId: "vapi-call-123",
+		status: "answered",
+		reply: "We offer Bath.",
+	});
+	assert.equal(receivedTurns.at(-1)?.context.callerPhone, undefined);
+});
+
 test("does not expose provider errors in the Vapi response", async () => {
 	const response = await sendVapiRequest({ message: "Trigger provider failure" });
 

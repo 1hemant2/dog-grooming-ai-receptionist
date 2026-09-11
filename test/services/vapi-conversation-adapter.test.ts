@@ -84,6 +84,81 @@ test("returns an appointment ID from the existing orchestrator", async () => {
 	});
 });
 
+test("returns an end-call signal and finalizes after an explicit goodbye", async () => {
+	let endConversationCount = 0;
+	const conversationStore = new InMemoryConversationStore();
+	const orchestrator: ConversationMessageHandler = {
+		async handleMessage() {
+			return {
+				reply: "Thanks for calling Maple Street Dog Grooming. Goodbye!",
+				outcome: createConversationOutcome(
+					"needs_information",
+					"The customer ended the conversation before the request was completed.",
+				),
+			};
+		},
+		async endConversation() {
+			endConversationCount += 1;
+		},
+	};
+	const adapter = new VapiConversationAdapter(conversationStore, () => orchestrator);
+	const context = {
+		businessId: "maple-street-dog-grooming",
+		conversationId: "vapi-explicit-goodbye",
+	};
+
+	const result = await adapter.handleTurn({
+		context,
+		message: "I don't want to continue",
+	});
+
+	assert.deepEqual(result, {
+		conversationId: context.conversationId,
+		status: "needs_information",
+		reply: "Thanks for calling Maple Street Dog Grooming. Goodbye!",
+		endCall: true,
+	});
+	assert.equal(endConversationCount, 1);
+	assert.throws(() =>
+		conversationStore.getConversation({
+			businessId: context.businessId,
+			conversationId: context.conversationId,
+		}),
+	);
+	await adapter.endCall(context);
+});
+
+test("does not signal an end call for a normal customer message", async () => {
+	const conversationStore = new InMemoryConversationStore();
+	const orchestrator: ConversationMessageHandler = {
+		async handleMessage() {
+			return {
+				reply: "No problem. What other date or time would work for you?",
+				outcome: createConversationOutcome(
+					"needs_information",
+					"The customer needs another appointment time.",
+				),
+			};
+		},
+		async endConversation() {},
+	};
+	const adapter = new VapiConversationAdapter(conversationStore, () => orchestrator);
+	const context = {
+		businessId: "maple-street-dog-grooming",
+		conversationId: "vapi-continue-call",
+	};
+
+	const result = await adapter.handleTurn({ context, message: "None of those work" });
+
+	assert.equal(result.endCall, undefined);
+	assert.doesNotThrow(() =>
+		conversationStore.getConversation({
+			businessId: context.businessId,
+			conversationId: context.conversationId,
+		}),
+	);
+});
+
 test("fails safely when a business has no orchestrator", async () => {
 	const adapter = new VapiConversationAdapter(new InMemoryConversationStore(), () => undefined);
 

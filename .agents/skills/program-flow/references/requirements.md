@@ -32,6 +32,7 @@ Build a text-based AI receptionist for Maple Street Dog Grooming. It should hand
 - A conversation that starts without a phone number can be resumed by its business and conversation ID. When a phone number is later provided, it becomes associated with that conversation and must match on subsequent requests.
 - After a call ends and its required Call Log data is saved, remove its in-memory conversation state. Do not remove the state if it must be preserved for a failed write or human handoff.
 - Successful responses contain `conversationId`, `status`, and `reply`. They also contain `appointmentId` when an appointment was created or changed, including a partial failure that requires human review.
+- Vapi responses may also contain `endCall: true` when the customer explicitly asks to end the call. The Vapi assistant speaks the returned closing reply and invokes its end-call capability after that reply.
 
 ## Phase 1 demonstration UI
 
@@ -94,6 +95,8 @@ Build a text-based AI receptionist for Maple Street Dog Grooming. It should hand
 16. Perform the approved Calendar action once and verify that it succeeded.
 17. Update the contact record in the business's Sheets records as needed.
 18. Tell the customer what happened and ask whether they need anything else.
+
+When the customer explicitly says goodbye, says they are done, asks to hang up, or clearly says they do not want to continue, return a short closing reply and end the Vapi call after the reply is spoken. Preserve the existing outcome when the request was already completed or handed off; otherwise record that the customer ended before the request was completed. Do not end the call when the customer rejects an appointment alternative, asks to reset, or needs human review but has not asked to leave.
 
 Customer-facing questions use conversational language and refer to known details, such as the pet's name, when helpful. Internal terms such as `configured service`, diagnostic reasons, and orchestration instructions are not shown to customers. Customer-facing appointment dates and times are formatted in the business timezone; UTC remains an internal Calendar and persistence representation.
 

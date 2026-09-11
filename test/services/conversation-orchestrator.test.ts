@@ -299,6 +299,21 @@ test("resets an active request locally without calling the interpreter", async (
 	assert.equal(conversation.contactPhone, "+14155550100");
 });
 
+test("returns a closing response without interpreting an explicit goodbye", async () => {
+	const orchestrator = new ConversationOrchestrator(
+		configuredBusiness,
+		new FakeInterpreter(new Error("The interpreter should not be called for goodbye")),
+		createDependencies(),
+	);
+	const conversation = createConversation();
+
+	const result = await orchestrator.handleMessage("I don't want to continue", conversation);
+
+	assert.equal(result.outcome.status, "needs_information");
+	assert.equal(result.reply, "Thanks for calling Maple Street Dog Grooming. Goodbye!");
+	assert.equal(conversation.outcome?.status, "needs_information");
+});
+
 test("asks for a new date when Gemini classifies rejection of all alternate slots", async () => {
 	const orchestrator = new ConversationOrchestrator(
 		configuredBusiness,

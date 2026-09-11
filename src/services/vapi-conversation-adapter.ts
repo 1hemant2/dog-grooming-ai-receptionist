@@ -10,6 +10,7 @@ import type {
 	VapiTurnResult,
 } from "../models/vapi.js";
 import type { ConversationMessageHandler } from "./conversation-orchestrator.js";
+import { isConversationEndRequest } from "./customer-message-parser.js";
 
 interface VapiCallState {
 	nextOperation: Promise<void>;
@@ -49,7 +50,7 @@ export class VapiConversationAdapter implements VapiCallHandler {
 			}
 		}
 
-		const turnPromise = this.enqueue(state, () => this.processTurn(turn));
+		const turnPromise = this.enqueue(state, () => this.processTurn(turn, state));
 		if (turn.requestId) {
 			const requestId = turn.requestId;
 			state.completedRequests.set(requestId, turnPromise);
@@ -112,7 +113,10 @@ export class VapiConversationAdapter implements VapiCallHandler {
 		return operationPromise;
 	}
 
-	private async processTurn(turn: VapiConversationTurn): Promise<VapiTurnResult> {
+	private async processTurn(
+		turn: VapiConversationTurn,
+		state: VapiCallState,
+	): Promise<VapiTurnResult> {
 		const timerStartedAt = process.hrtime.bigint();
 		const conversationInput: ReceiveMessageInput = {
 			businessId: turn.context.businessId,
@@ -151,6 +155,12 @@ export class VapiConversationAdapter implements VapiCallHandler {
 
 			if (result.outcome.appointmentId) {
 				response.appointmentId = result.outcome.appointmentId;
+			}
+
+			if (isConversationEndRequest(turn.message)) {
+				state.endRequested = true;
+				response.endCall = true;
+				await this.finalizeCall(turn.context, state);
 			}
 
 			console.info("Vapi conversation turn completed.", {

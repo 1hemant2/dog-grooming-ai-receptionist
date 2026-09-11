@@ -73,6 +73,9 @@ export const APPLICATION_PATTERNS = {
 	// Matches explicit customer commands that clear the current request.
 	conversationReset:
 		/^(?:(?:please|can we|i want to|i would like to|let s|lets)\s+)?(?:reset(?:\s+in between|\s+(?:the|this|that|current|my)\s+(?:request|booking|conversation|flow))?|start over|start again|begin again|(?:new|start a new) (?:request|conversation)|forget this|forget that|cancel (?:this|that) and start(?: over| again))$/i,
+	// Matches an explicit request to end the current call or conversation.
+	conversationEnd:
+		/^(?:(?:okay|ok|alright|well|thanks|thank you)\s+)?(?:goodbye|bye|i am done|im done|i m done|thats all|that s all|that is all|i do not want to continue|i don t want to continue|end the call|end this call|hang up|disconnect|stop the call|stop this conversation|we can end(?: now| here)?)$/i,
 };
 
 export interface VapiBusinessPhoneMapping {

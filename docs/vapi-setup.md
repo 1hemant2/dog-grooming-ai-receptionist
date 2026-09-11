@@ -43,18 +43,20 @@ Add these static body fields so the model cannot invent trusted identity values:
 | `calledPhoneNumber` | The configured Vapi phone number in E.164 format |
 | `callerPhone`       | `{{customer.number}}`                            |
 
-Extract the response field `reply` as a required string. The assistant should speak that value exactly once.
+Extract `reply` as a required string and `endCall` as an optional boolean. The assistant should speak `reply` exactly once. When `endCall` is `true`, the assistant should invoke the built-in `endCall` tool after speaking the returned closing reply.
 
 Configure delayed response messages:
 
-- At approximately 1.2 seconds: “I’m checking that for you. One moment, please.”
-- At approximately 7 seconds: “Thanks for your patience. I’m still working on that.”
+- At approximately 1.2 seconds: “Got it—give me just a moment.”
+- At approximately 5 seconds: “Thanks for your patience—I’m still working on it.”
+- At approximately 12 seconds: “This is taking a little longer than expected, but I’m still on it.”
 
 Publish the tool after changing it.
 
 ## Configure the assistant and phone number
 
 Create an assistant named `Maple Street Receptionist`, attach the published tool, and use a prompt that requires every caller turn to go through the tool. The assistant should speak the returned `reply` exactly once and avoid answering business questions from its own model knowledge.
+Add Vapi's built-in `endCall` tool. Instruct the assistant to use it only when the backend returns `endCall: true`; it must speak the returned closing reply first. Do not end the call for appointment-time rejection, reset requests, slow responses, or human handoff unless the customer explicitly asks to leave.
 
 Assign the assistant to the Vapi phone number. Set the phone number's server URL to:
 
