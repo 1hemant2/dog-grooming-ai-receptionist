@@ -18,7 +18,10 @@ Write code for a human reviewer. Optimize for clarity, correctness, maintainabil
 
 ## Object-oriented design
 
-- Use classes when an object owns state, behavior, identity, or invariants. Use functions for simple stateless transformations.
+- Use classes when an object owns state, behavior, identity, or invariants. Use a simple named function when the operation is stateless and can be understood from its inputs and return value alone, such as parsing, validation, formatting, mapping, or a small pure calculation.
+- Keep stateful workflows, external side effects, and business behavior that changes object state inside the responsible class. Do not replace those methods with a collection of unrelated functions.
+- Do not create a class only to hold stateless helper functions. A class adds value when it protects state, coordinates injected dependencies, owns an invariant, or represents a meaningful domain or application boundary.
+- Keep one style within each responsibility: a class may use small private pure functions for local transformations, but extracted functions must not hide state or business workflow. If a function is chosen instead of a class for a non-obvious reason, document that reason in the design or code review.
 - Keep behavior close to the data and rules it protects.
 - Apply SOLID principles pragmatically; do not introduce abstractions only to demonstrate a principle.
 - Prefer composition over inheritance.

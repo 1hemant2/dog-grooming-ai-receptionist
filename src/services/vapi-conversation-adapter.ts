@@ -3,10 +3,26 @@ import type {
 	InMemoryConversationStore,
 	ReceiveMessageInput,
 } from "../models/conversation.js";
-import type { VapiConversationTurn, VapiTurnHandler, VapiTurnResult } from "../models/vapi.js";
+import type {
+	VapiCallContext,
+	VapiCallHandler,
+	VapiConversationTurn,
+	VapiTurnResult,
+} from "../models/vapi.js";
 import type { ConversationMessageHandler } from "./conversation-orchestrator.js";
 
-export class VapiConversationAdapter implements VapiTurnHandler {
+interface VapiCallState {
+	nextOperation: Promise<void>;
+	completedRequests: Map<string, Promise<VapiTurnResult>>;
+	endRequested: boolean;
+	finalizationPromise: Promise<void> | undefined;
+	callLogFinalized: boolean;
+}
+
+export class VapiConversationAdapter implements VapiCallHandler {
+	private readonly callStates = new Map<string, VapiCallState>();
+	private readonly finalizedCallIds = new Set<string>();
+
 	constructor(
 		private readonly conversationStore: InMemoryConversationStore,
 		private readonly resolveOrchestrator: (
@@ -14,7 +30,89 @@ export class VapiConversationAdapter implements VapiTurnHandler {
 		) => ConversationMessageHandler | undefined,
 	) {}
 
-	async handleTurn(turn: VapiConversationTurn): Promise<VapiTurnResult> {
+	handleTurn(turn: VapiConversationTurn): Promise<VapiTurnResult> {
+		const callId = turn.context.conversationId;
+
+		if (this.finalizedCallIds.has(callId)) {
+			return Promise.reject(new Error("Vapi call has already ended"));
+		}
+
+		const state = this.getCallState(callId);
+		if (state.endRequested) {
+			return Promise.reject(new Error("Vapi call is being finalized"));
+		}
+
+		if (turn.requestId) {
+			const completedRequest = state.completedRequests.get(turn.requestId);
+			if (completedRequest) {
+				return completedRequest;
+			}
+		}
+
+		const turnPromise = this.enqueue(state, () => this.processTurn(turn));
+		if (turn.requestId) {
+			const requestId = turn.requestId;
+			state.completedRequests.set(requestId, turnPromise);
+			void turnPromise.catch(() => {
+				if (state.completedRequests.get(requestId) === turnPromise) {
+					state.completedRequests.delete(requestId);
+				}
+			});
+		}
+
+		return turnPromise;
+	}
+
+	endCall(context: VapiCallContext): Promise<void> {
+		const callId = context.conversationId;
+		if (this.finalizedCallIds.has(callId)) {
+			return Promise.resolve();
+		}
+
+		const state = this.getCallState(callId);
+		if (state.finalizationPromise) {
+			return state.finalizationPromise;
+		}
+
+		state.endRequested = true;
+		const finalizationPromise = this.enqueue(state, () => this.finalizeCall(context, state));
+		state.finalizationPromise = finalizationPromise;
+		void finalizationPromise.catch(() => {
+			if (state.finalizationPromise === finalizationPromise) {
+				state.finalizationPromise = undefined;
+			}
+		});
+
+		return finalizationPromise;
+	}
+
+	private getCallState(callId: string): VapiCallState {
+		const existingState = this.callStates.get(callId);
+		if (existingState) {
+			return existingState;
+		}
+
+		const state: VapiCallState = {
+			nextOperation: Promise.resolve(),
+			completedRequests: new Map(),
+			endRequested: false,
+			finalizationPromise: undefined,
+			callLogFinalized: false,
+		};
+		this.callStates.set(callId, state);
+		return state;
+	}
+
+	private enqueue<T>(state: VapiCallState, operation: () => Promise<T>): Promise<T> {
+		const operationPromise = state.nextOperation.then(operation);
+		state.nextOperation = operationPromise.then(
+			() => undefined,
+			() => undefined,
+		);
+		return operationPromise;
+	}
+
+	private async processTurn(turn: VapiConversationTurn): Promise<VapiTurnResult> {
 		const timerStartedAt = process.hrtime.bigint();
 		const conversationInput: ReceiveMessageInput = {
 			businessId: turn.context.businessId,
@@ -74,6 +172,38 @@ export class VapiConversationAdapter implements VapiTurnHandler {
 			});
 			throw error;
 		}
+	}
+
+	private async finalizeCall(context: VapiCallContext, state: VapiCallState): Promise<void> {
+		const lookupInput: ConversationLookupInput = {
+			businessId: context.businessId,
+			conversationId: context.conversationId,
+		};
+
+		if (context.callerPhone !== undefined) {
+			lookupInput.callerPhone = context.callerPhone;
+		}
+
+		const conversation = this.conversationStore.getConversation(lookupInput);
+		const orchestrator = this.resolveOrchestrator(context.businessId);
+
+		if (!orchestrator) {
+			throw new Error("No conversation orchestrator is configured for the business");
+		}
+
+		if (!state.callLogFinalized) {
+			await orchestrator.endConversation(conversation);
+			state.callLogFinalized = true;
+		}
+
+		this.conversationStore.endConversation(lookupInput);
+		this.finalizedCallIds.add(context.conversationId);
+		this.callStates.delete(context.conversationId);
+
+		console.info("Vapi call finalized.", {
+			businessId: context.businessId,
+			conversationId: context.conversationId,
+		});
 	}
 }
 

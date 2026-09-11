@@ -9,6 +9,7 @@ export interface VapiCallContext {
 export interface VapiConversationTurn {
 	context: VapiCallContext;
 	message: string;
+	requestId?: string;
 }
 
 export interface VapiTurnResult {
@@ -20,4 +21,8 @@ export interface VapiTurnResult {
 
 export interface VapiTurnHandler {
 	handleTurn(turn: VapiConversationTurn): Promise<VapiTurnResult>;
+}
+
+export interface VapiCallHandler extends VapiTurnHandler {
+	endCall(context: VapiCallContext): Promise<void>;
 }

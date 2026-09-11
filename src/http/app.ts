@@ -2,14 +2,14 @@ import express, { type Express, type NextFunction, type Request, type Response }
 
 import { APPLICATION_CONFIG, type VapiConfig } from "../config/constants.js";
 import type { InMemoryConversationStore } from "../models/conversation.js";
-import type { VapiTurnHandler } from "../models/vapi.js";
+import type { VapiCallHandler } from "../models/vapi.js";
 import { createConversationRouter } from "../routes/conversation-routes.js";
 import { createVapiRouter } from "../routes/vapi-routes.js";
 import type { ConversationMessageHandler } from "../services/conversation-orchestrator.js";
 
 export interface VapiHttpOptions {
 	config: VapiConfig;
-	turnHandler?: VapiTurnHandler;
+	turnHandler?: VapiCallHandler;
 }
 
 export function createHttpApp(

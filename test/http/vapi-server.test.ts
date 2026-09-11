@@ -4,7 +4,7 @@ import { after, before, test } from "node:test";
 import type { VapiConfig } from "../../src/config/constants.js";
 import { closeServerGracefully, createHttpServer } from "../../src/http/server.js";
 import { InMemoryConversationStore } from "../../src/models/conversation.js";
-import type { VapiConversationTurn, VapiTurnHandler } from "../../src/models/vapi.js";
+import type { VapiCallHandler, VapiConversationTurn } from "../../src/models/vapi.js";
 
 const config: VapiConfig = {
 	serverToken: "test-vapi-token",
@@ -16,7 +16,8 @@ const config: VapiConfig = {
 	],
 };
 const receivedTurns: VapiConversationTurn[] = [];
-const handler: VapiTurnHandler = {
+const receivedEndCalls: VapiConversationTurn["context"][] = [];
+const handler: VapiCallHandler = {
 	async handleTurn(turn) {
 		if (turn.message === "Trigger provider failure") {
 			throw new Error("Sensitive provider details");
@@ -28,6 +29,9 @@ const handler: VapiTurnHandler = {
 			status: "answered",
 			reply: "We offer Bath.",
 		};
+	},
+	async endCall(context) {
+		receivedEndCalls.push(context);
 	},
 };
 const server = createHttpServer(new InMemoryConversationStore(), undefined, {
@@ -126,11 +130,36 @@ test("does not expose provider errors in the Vapi response", async () => {
 	assert.deepEqual(await response.json(), { error: "Internal server error" });
 });
 
+test("finalizes a Vapi call from an end-of-call event", async () => {
+	const response = await sendVapiEvent();
+
+	assert.equal(response.status, 200);
+	assert.deepEqual(await response.json(), {
+		conversationId: "vapi-call-123",
+		status: "ended",
+	});
+	assert.deepEqual(receivedEndCalls.at(-1), {
+		businessId: "maple-street-dog-grooming",
+		conversationId: "vapi-call-123",
+		callerPhone: "+14155550101",
+	});
+});
+
+test("ignores Vapi events that do not end a call", async () => {
+	const handledBeforeRequest = receivedEndCalls.length;
+	const response = await sendVapiEvent("status-update");
+
+	assert.equal(response.status, 200);
+	assert.deepEqual(await response.json(), { status: "ignored" });
+	assert.equal(receivedEndCalls.length, handledBeforeRequest);
+});
+
 interface VapiRequestOverrides {
 	callId?: string;
 	calledPhoneNumber?: string;
 	callerPhone?: string;
 	message?: string;
+	requestId?: string;
 }
 
 function sendVapiRequest(
@@ -151,6 +180,26 @@ function sendVapiRequest(
 			callerPhone: "+14155550101",
 			message: "What services do you offer?",
 			...overrides,
+		}),
+	});
+}
+
+function sendVapiEvent(type = "end-of-call-report", token = config.serverToken): Promise<Response> {
+	return fetch(`${baseUrl}/vapi/events`, {
+		method: "POST",
+		headers: {
+			"content-type": "application/json",
+			authorization: `Bearer ${token}`,
+		},
+		body: JSON.stringify({
+			message: {
+				type,
+				call: {
+					id: "vapi-call-123",
+					phoneNumber: { number: "+14155550100" },
+					customer: { number: "+14155550101" },
+				},
+			},
 		}),
 	});
 }

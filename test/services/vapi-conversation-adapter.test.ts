@@ -98,3 +98,197 @@ test("fails safely when a business has no orchestrator", async () => {
 		/No conversation orchestrator is configured/,
 	);
 });
+
+test("reuses the result for a duplicate request ID", async () => {
+	const conversationStore = new InMemoryConversationStore();
+	let handledMessageCount = 0;
+	const orchestrator: ConversationMessageHandler = {
+		async handleMessage() {
+			handledMessageCount += 1;
+			return {
+				reply: "How can I help?",
+				outcome: createConversationOutcome("answered", "Question answered."),
+			};
+		},
+		async endConversation() {},
+	};
+	const adapter = new VapiConversationAdapter(conversationStore, () => orchestrator);
+	const turn = {
+		context: {
+			businessId: "maple-street-dog-grooming",
+			conversationId: "vapi-duplicate-call",
+		},
+		message: "Hello",
+		requestId: "request-123",
+	};
+
+	const firstResult = adapter.handleTurn(turn);
+	const duplicateResult = adapter.handleTurn(turn);
+
+	assert.equal(firstResult, duplicateResult);
+	assert.deepEqual(await duplicateResult, {
+		conversationId: "vapi-duplicate-call",
+		status: "answered",
+		reply: "How can I help?",
+	});
+	assert.equal(handledMessageCount, 1);
+	assert.equal(
+		conversationStore.getConversation({
+			businessId: "maple-street-dog-grooming",
+			conversationId: "vapi-duplicate-call",
+		}).messages.length,
+		1,
+	);
+});
+
+test("processes overlapping turns in order", async () => {
+	const firstTurnStarted = createDeferred<void>();
+	const releaseFirstTurn = createDeferred<void>();
+	const receivedMessages: string[] = [];
+	let activeMessageCount = 0;
+	let maximumActiveMessageCount = 0;
+	const orchestrator: ConversationMessageHandler = {
+		async handleMessage(message) {
+			receivedMessages.push(message);
+			activeMessageCount += 1;
+			maximumActiveMessageCount = Math.max(maximumActiveMessageCount, activeMessageCount);
+
+			if (message === "First message") {
+				firstTurnStarted.resolve();
+				await releaseFirstTurn.promise;
+			}
+
+			activeMessageCount -= 1;
+			return {
+				reply: "Received.",
+				outcome: createConversationOutcome("answered", "Question answered."),
+			};
+		},
+		async endConversation() {},
+	};
+	const adapter = new VapiConversationAdapter(
+		new InMemoryConversationStore(),
+		() => orchestrator,
+	);
+	const context = {
+		businessId: "maple-street-dog-grooming",
+		conversationId: "vapi-ordered-call",
+	};
+
+	const firstTurn = adapter.handleTurn({ context, message: "First message" });
+	await firstTurnStarted.promise;
+	const secondTurn = adapter.handleTurn({ context, message: "Second message" });
+
+	assert.deepEqual(receivedMessages, ["First message"]);
+	assert.equal(maximumActiveMessageCount, 1);
+
+	releaseFirstTurn.resolve();
+	await Promise.all([firstTurn, secondTurn]);
+
+	assert.deepEqual(receivedMessages, ["First message", "Second message"]);
+	assert.equal(maximumActiveMessageCount, 1);
+});
+
+test("waits for the active turn and finalizes only once", async () => {
+	const turnStarted = createDeferred<void>();
+	const releaseTurn = createDeferred<void>();
+	let endConversationCount = 0;
+	const orchestrator: ConversationMessageHandler = {
+		async handleMessage() {
+			turnStarted.resolve();
+			await releaseTurn.promise;
+			return {
+				reply: "Received.",
+				outcome: createConversationOutcome("answered", "Question answered."),
+			};
+		},
+		async endConversation() {
+			endConversationCount += 1;
+		},
+	};
+	const conversationStore = new InMemoryConversationStore();
+	const adapter = new VapiConversationAdapter(conversationStore, () => orchestrator);
+	const context = {
+		businessId: "maple-street-dog-grooming",
+		conversationId: "vapi-end-call",
+		callerPhone: "+14155550101",
+	};
+
+	const turn = adapter.handleTurn({ context, message: "Hello" });
+	await turnStarted.promise;
+	const firstEnd = adapter.endCall(context);
+	const duplicateEnd = adapter.endCall(context);
+
+	assert.equal(firstEnd, duplicateEnd);
+	assert.equal(endConversationCount, 0);
+
+	releaseTurn.resolve();
+	await Promise.all([turn, firstEnd]);
+	await adapter.endCall(context);
+
+	assert.equal(endConversationCount, 1);
+	assert.throws(() =>
+		conversationStore.getConversation({
+			businessId: context.businessId,
+			conversationId: context.conversationId,
+			callerPhone: context.callerPhone,
+		}),
+	);
+});
+
+test("preserves conversation state when finalization fails", async () => {
+	let endConversationCount = 0;
+	let shouldFail = true;
+	const orchestrator: ConversationMessageHandler = {
+		async handleMessage() {
+			return {
+				reply: "Received.",
+				outcome: createConversationOutcome("answered", "Question answered."),
+			};
+		},
+		async endConversation() {
+			endConversationCount += 1;
+			if (shouldFail) {
+				shouldFail = false;
+				throw new Error("Call Log is unavailable");
+			}
+		},
+	};
+	const conversationStore = new InMemoryConversationStore();
+	const adapter = new VapiConversationAdapter(conversationStore, () => orchestrator);
+	const context = {
+		businessId: "maple-street-dog-grooming",
+		conversationId: "vapi-retry-end-call",
+	};
+
+	await adapter.handleTurn({ context, message: "Hello" });
+	await assert.rejects(adapter.endCall(context), /Call Log is unavailable/);
+	assert.doesNotThrow(() =>
+		conversationStore.getConversation({
+			businessId: context.businessId,
+			conversationId: context.conversationId,
+		}),
+	);
+
+	await adapter.endCall(context);
+
+	assert.equal(endConversationCount, 2);
+	assert.throws(() =>
+		conversationStore.getConversation({
+			businessId: context.businessId,
+			conversationId: context.conversationId,
+		}),
+	);
+});
+
+function createDeferred<T>(): {
+	promise: Promise<T>;
+	resolve(value: T): void;
+} {
+	let resolvePromise: (value: T) => void = () => undefined;
+	const promise = new Promise<T>((resolve) => {
+		resolvePromise = resolve;
+	});
+
+	return { promise, resolve: resolvePromise };
+}

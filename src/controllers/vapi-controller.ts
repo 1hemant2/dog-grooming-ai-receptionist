@@ -4,18 +4,26 @@ import type { Request, RequestHandler, Response } from "express";
 
 import { APPLICATION_CONFIG, APPLICATION_PATTERNS, type VapiConfig } from "../config/constants.js";
 import { isValidPhoneNumber } from "../models/customer.js";
-import type { VapiConversationTurn, VapiTurnHandler } from "../models/vapi.js";
+import type { VapiCallHandler, VapiConversationTurn } from "../models/vapi.js";
 
 interface VapiRequestBody {
 	callId: string;
 	calledPhoneNumber: string;
 	callerPhone?: string;
 	message: string;
+	requestId?: string;
+}
+
+interface VapiEventBody {
+	type: string;
+	callId?: string;
+	calledPhoneNumber?: string;
+	callerPhone?: string;
 }
 
 export function createVapiConversationController(
 	config: VapiConfig | undefined,
-	handler?: VapiTurnHandler,
+	handler?: VapiCallHandler,
 ): RequestHandler {
 	return async function receiveVapiConversationTurn(
 		request: Request,
@@ -48,7 +56,11 @@ export function createVapiConversationController(
 				context.callerPhone = body.callerPhone;
 			}
 
-			const result = await handler.handleTurn({ context, message: body.message });
+			const result = await handler.handleTurn({
+				context,
+				message: body.message,
+				...(body.requestId ? { requestId: body.requestId } : {}),
+			});
 			response.status(200).json(result);
 		} catch (error) {
 			if (error instanceof VapiRequestError) {
@@ -57,6 +69,58 @@ export function createVapiConversationController(
 			}
 
 			console.error("Vapi request failed.", {
+				errorName: error instanceof Error ? error.constructor.name : "UnknownError",
+			});
+			response.status(500).json({ error: "Internal server error" });
+		}
+	};
+}
+
+export function createVapiEventController(
+	config: VapiConfig | undefined,
+	handler?: VapiCallHandler,
+): RequestHandler {
+	return async function receiveVapiEvent(request: Request, response: Response): Promise<void> {
+		try {
+			if (!config) {
+				response.status(503).json({ error: "Vapi integration is not configured" });
+				return;
+			}
+
+			if (!hasValidAuthorization(request, config.serverToken)) {
+				response.status(401).json({ error: "Unauthorized" });
+				return;
+			}
+
+			if (!handler) {
+				response.status(503).json({ error: "Vapi integration is not configured" });
+				return;
+			}
+
+			const body = readEventBody(request);
+			if (body.type !== "end-of-call-report") {
+				response.status(200).json({ status: "ignored" });
+				return;
+			}
+
+			if (!body.callId || !body.calledPhoneNumber || !body.callerPhone) {
+				throw new VapiRequestError(400, "End-of-call report is missing call identity");
+			}
+
+			const businessId = resolveBusinessId(body.calledPhoneNumber, config);
+			await handler.endCall({
+				businessId,
+				conversationId: body.callId,
+				callerPhone: body.callerPhone,
+			});
+			response.status(200).json({ conversationId: body.callId, status: "ended" });
+		} catch (error) {
+			if (error instanceof VapiRequestError) {
+				response.status(error.statusCode).json({ error: error.message });
+				return;
+			}
+
+			console.error("Vapi event failed.", {
 				errorName: error instanceof Error ? error.constructor.name : "UnknownError",
 			});
 			response.status(500).json({ error: "Internal server error" });
@@ -92,6 +156,7 @@ function readRequestBody(request: Request): VapiRequestBody {
 	const calledPhoneNumber = readRequiredString(request.body, "calledPhoneNumber");
 	const callerPhone = readOptionalString(request.body, "callerPhone");
 	const message = readRequiredString(request.body, "message");
+	const requestId = readOptionalString(request.body, "requestId");
 
 	if (
 		callId.length > APPLICATION_CONFIG.maxConversationIdCharacters ||
@@ -120,7 +185,57 @@ function readRequestBody(request: Request): VapiRequestBody {
 		body.callerPhone = callerPhone;
 	}
 
+	if (requestId !== undefined) {
+		if (requestId.length > APPLICATION_CONFIG.maxConversationIdCharacters) {
+			throw new VapiRequestError(400, "requestId is invalid");
+		}
+
+		body.requestId = requestId;
+	}
+
 	return body;
+}
+
+function readEventBody(request: Request): VapiEventBody {
+	if (!request.is("application/json")) {
+		throw new VapiRequestError(415, "Content-Type must be application/json");
+	}
+
+	if (!isObject(request.body) || !isObject(request.body.message)) {
+		throw new VapiRequestError(400, "Request body must contain a Vapi message");
+	}
+
+	const message = request.body.message;
+	const type = readRequiredString(message, "type");
+	if (type !== "end-of-call-report") {
+		return { type };
+	}
+
+	if (!isObject(message.call)) {
+		throw new VapiRequestError(400, "End-of-call report must contain a call");
+	}
+
+	const call = message.call;
+	const callId = readRequiredString(call, "id");
+	const calledPhoneNumber = readNestedRequiredString(call, "phoneNumber", "number");
+	const callerPhone = readNestedRequiredString(call, "customer", "number");
+
+	if (
+		callId.length > APPLICATION_CONFIG.maxConversationIdCharacters ||
+		!APPLICATION_PATTERNS.conversationId.test(callId)
+	) {
+		throw new VapiRequestError(400, "call.id is invalid");
+	}
+
+	if (!isValidPhoneNumber(calledPhoneNumber)) {
+		throw new VapiRequestError(400, "call.phoneNumber.number must use E.164 format");
+	}
+
+	if (!isValidPhoneNumber(callerPhone)) {
+		throw new VapiRequestError(400, "call.customer.number must use E.164 format");
+	}
+
+	return { type, callId, calledPhoneNumber, callerPhone };
 }
 
 function resolveBusinessId(calledPhoneNumber: string, config: VapiConfig): string {
@@ -153,6 +268,19 @@ function readOptionalString(body: Record<string, unknown>, field: string): strin
 	}
 
 	return value.trim();
+}
+
+function readNestedRequiredString(
+	body: Record<string, unknown>,
+	objectField: string,
+	valueField: string,
+): string {
+	const nestedObject = body[objectField];
+	if (!isObject(nestedObject)) {
+		throw new VapiRequestError(400, `${objectField}.${valueField} is required`);
+	}
+
+	return readRequiredString(nestedObject, valueField);
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
