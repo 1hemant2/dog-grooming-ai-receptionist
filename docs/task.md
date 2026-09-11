@@ -371,7 +371,7 @@ Complete when:
 
 ## T15 — Voice end-to-end verification and documentation
 
-Status: Pending
+Status: Complete
 
 Goal: Deliver a reproducible Vapi voice demonstration using the completed backend integration.
 
@@ -387,3 +387,11 @@ Complete when:
 - Setup documentation explains the Vapi assistant, phone or browser-call configuration, authentication, required environment variables, public HTTPS tunnel or deployment, and demonstration flow.
 - No credentials, transcripts, recordings, phone numbers, or generated artifacts are committed.
 - Formatting, linting, type checking, tests, and build pass.
+
+Implementation notes:
+
+- The published API Request Tool is named `mapleStreetReceptionistMessage` and calls `POST /vapi/conversations/messages`.
+- The published `Maple Street Receptionist` assistant routes each final caller utterance through that tool and speaks the returned `reply`.
+- The configured phone webhook calls `POST /vapi/events` so the completed call is finalized and its Call Log is written once.
+- Local verification uses an HTTPS ngrok dev domain; the domain and all credentials remain outside the repository.
+- Reproducible setup steps are documented in `docs/vapi-setup.md`.
