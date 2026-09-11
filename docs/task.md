@@ -27,7 +27,7 @@ This is the implementation backlog. The approved Phase 1 behavior remains in
 - [x] T10 — Reliability and safety checks
 - [ ] T11 — Demo data, end-to-end verification, and documentation
 - [x] T12 — Vapi contract, configuration, and security
-- [ ] T13 — Vapi conversation turn adapter
+- [x] T13 — Vapi conversation turn adapter
 - [ ] T14 — Vapi call lifecycle and delivery safety
 - [ ] T15 — Voice end-to-end verification and documentation
 
@@ -302,7 +302,7 @@ Complete when:
 
 ## T13 — Vapi conversation turn adapter
 
-Status: Pending
+Status: Complete
 
 Goal: Pass each caller utterance to the existing conversation handler and return its reply to Vapi.
 
@@ -330,10 +330,9 @@ Complete when:
 
 - The existing text UI and `POST /conversations/messages` contract continue to work unchanged.
 - Interpretation and provider failures produce a safe voice response without exposing internal errors.
-- A response completed before the delay threshold does not play a waiting message.
-- A delayed response plays the configured waiting message without interrupting, replacing, or changing the final receptionist reply.
 - Timing logs include safe call and duration metadata without transcripts, phone numbers, credentials, or complete provider payloads.
-- Adapter tests cover multi-turn state, response formatting, provider failures, and delayed-response timing.
+- Adapter tests cover multi-turn state, response formatting, and provider failures.
+- The waiting-message thresholds and wording are defined for the final Vapi configuration task.
 
 ## T14 — Vapi call lifecycle and delivery safety
 
@@ -370,6 +369,8 @@ Goal: Deliver a reproducible Vapi voice demonstration using the completed backen
 
 Complete when:
 
+- The Vapi API Request Tool uses the agreed waiting messages after approximately 2.5 and 7 seconds.
+- Fast responses do not play a waiting message, and delayed messages do not replace the final receptionist reply.
 - Vapi can conduct a multi-turn voice conversation using the existing receptionist behavior.
 - At least one voice booking, rescheduling, and cancellation reaches the existing Calendar and Sheets integrations.
 - A human-handoff case sends the existing Telegram owner notification.

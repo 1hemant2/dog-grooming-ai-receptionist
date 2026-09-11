@@ -18,6 +18,10 @@ const config: VapiConfig = {
 const receivedTurns: VapiConversationTurn[] = [];
 const handler: VapiTurnHandler = {
 	async handleTurn(turn) {
+		if (turn.message === "Trigger provider failure") {
+			throw new Error("Sensitive provider details");
+		}
+
 		receivedTurns.push(turn);
 		return {
 			conversationId: turn.context.conversationId,
@@ -113,6 +117,13 @@ test("rejects an invalid caller number", async () => {
 		error: "callerPhone must use E.164 format",
 	});
 	assert.equal(receivedTurns.length, handledBeforeRequest);
+});
+
+test("does not expose provider errors in the Vapi response", async () => {
+	const response = await sendVapiRequest({ message: "Trigger provider failure" });
+
+	assert.equal(response.status, 500);
+	assert.deepEqual(await response.json(), { error: "Internal server error" });
 });
 
 interface VapiRequestOverrides {

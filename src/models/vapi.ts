@@ -1,3 +1,5 @@
+import type { ConversationOutcomeStatus } from "./receptionist.js";
+
 export interface VapiCallContext {
 	businessId: string;
 	conversationId: string;
@@ -11,7 +13,7 @@ export interface VapiConversationTurn {
 
 export interface VapiTurnResult {
 	conversationId: string;
-	status: string;
+	status: ConversationOutcomeStatus;
 	reply: string;
 	appointmentId?: string;
 }

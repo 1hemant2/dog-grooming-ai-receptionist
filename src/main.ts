@@ -1,13 +1,13 @@
-import { APPLICATION_CONFIG, getVapiConfig } from "./config/constants.js";
+import { createConversationOrchestratorResolver } from "./app/create-conversation-orchestrator-resolver.js";
+import { createVapiHttpOptions } from "./app/create-vapi-http-options.js";
+import { APPLICATION_CONFIG } from "./config/constants.js";
 import { createHttpServer, registerShutdownSignals } from "./http/server.js";
 import { InMemoryConversationStore } from "./models/conversation.js";
-import { createConversationOrchestratorResolver } from "./app/create-conversation-orchestrator-resolver.js";
 import { ConversationFinalizer } from "./services/conversation-finalizer.js";
 
 const conversationStore = new InMemoryConversationStore();
 const resolveOrchestrator = createConversationOrchestratorResolver();
-const vapiConfig = getVapiConfig();
-const vapiOptions = vapiConfig ? { config: vapiConfig } : undefined;
+const vapiOptions = createVapiHttpOptions(conversationStore, resolveOrchestrator);
 const server = createHttpServer(conversationStore, resolveOrchestrator, vapiOptions);
 const conversationFinalizer = new ConversationFinalizer(
 	conversationStore,
