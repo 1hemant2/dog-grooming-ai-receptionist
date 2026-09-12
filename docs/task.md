@@ -394,4 +394,4 @@ Implementation notes:
 - The published `Maple Street Receptionist` assistant routes each final caller utterance through that tool and speaks the returned `reply`.
 - The configured phone webhook calls `POST /vapi/events` so the completed call is finalized and its Call Log is written once.
 - Local verification uses an HTTPS ngrok dev domain; the domain and all credentials remain outside the repository.
-- Reproducible setup steps are documented in `docs/vapi-setup.md`.
+- Reproducible setup steps are documented in `docs/voice-integration-setup.md`.

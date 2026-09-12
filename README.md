@@ -100,9 +100,7 @@ Example end-to-end workflows:
 Additional guides:
 
 - [Architecture and request flow](docs/architecture.md)
-- [Browser workflow guide](docs/demo.md)
-- [LiveKit browser voice setup](docs/livekit-setup.md)
-- [Vapi voice setup](docs/vapi-setup.md)
+- [Voice integration setup](docs/voice-integration-setup.md)
 - [Confirmed business flows](.agents/skills/program-flow/references/requirements.md)
 
 ## Known scope limits
