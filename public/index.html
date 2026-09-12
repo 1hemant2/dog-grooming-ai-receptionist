@@ -33,6 +33,20 @@
 					End conversation
 				</button>
 
+				<section class="voice-demo" aria-labelledby="voice-demo-title">
+					<p id="voice-demo-title" class="scenario-group-label">Live voice</p>
+					<p id="livekit-status" class="voice-status" aria-live="polite">Not connected</p>
+					<div class="voice-actions">
+						<button id="start-livekit-voice" class="voice-button" type="button">
+							Start voice
+						</button>
+						<button id="stop-livekit-voice" class="voice-button" type="button" disabled>
+							Stop voice
+						</button>
+					</div>
+					<div id="livekit-audio" class="voice-audio" aria-live="polite"></div>
+				</section>
+
 				<div class="scenario-list" id="scenario-list">
 					<p class="field-label">Quick requests</p>
 
@@ -160,6 +174,6 @@
 			</section>
 		</main>
 
-		<script src="/app.js" defer></script>
+		<script type="module" src="/app.js"></script>
 	</body>
 </html>

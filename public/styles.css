@@ -159,6 +159,48 @@ textarea:focus {
 	margin-top: 0.5rem;
 }
 
+.voice-demo {
+	margin-top: 1.25rem;
+	padding-top: 1rem;
+	border-top: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.voice-status {
+	margin: 0.4rem 0 0.65rem;
+	color: #d7e6e8;
+	font-size: 0.8rem;
+}
+
+.voice-actions {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 0.5rem;
+}
+
+.voice-button {
+	padding: 0.5rem 0.55rem;
+	border: 1px solid rgba(142, 219, 212, 0.45);
+	border-radius: 0.7rem;
+	background: rgba(50, 198, 184, 0.16);
+	color: #ffffff;
+	font-size: 0.78rem;
+	font-weight: 800;
+}
+
+.voice-button:hover,
+.voice-button:focus-visible {
+	background: rgba(50, 198, 184, 0.3);
+}
+
+.voice-button:disabled {
+	cursor: not-allowed;
+	opacity: 0.45;
+}
+
+.voice-audio {
+	display: none;
+}
+
 .scenario-list {
 	display: flex;
 	flex: 1 1 auto;

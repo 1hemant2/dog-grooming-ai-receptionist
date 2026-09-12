@@ -1,4 +1,6 @@
-/* global document, fetch, sessionStorage */
+/* global clearTimeout, document, fetch, sessionStorage, setTimeout */
+
+import * as liveKit from "/vendor/livekit/livekit-client.esm.mjs";
 
 const BUSINESS_ID = "maple-street-dog-grooming";
 const CONVERSATION_ID_KEY = "mapleStreetConversationId";
@@ -14,13 +16,20 @@ class ReceptionistApp {
 		this.conversationLog = document.querySelector("#conversation-log");
 		this.status = document.querySelector("#request-status");
 		this.conversationIdLabel = document.querySelector("#conversation-id");
+		this.liveKitStatus = document.querySelector("#livekit-status");
+		this.startLiveKitButton = document.querySelector("#start-livekit-voice");
+		this.stopLiveKitButton = document.querySelector("#stop-livekit-voice");
+		this.liveKitAudio = document.querySelector("#livekit-audio");
 		this.conversationId = sessionStorage.getItem(CONVERSATION_ID_KEY);
 		this.conversationLocked = false;
+		this.liveKitRoom = null;
 
 		this.form.addEventListener("submit", this.sendMessage.bind(this));
 		this.messageInput.addEventListener("keydown", this.handleMessageKeydown.bind(this));
 		this.newConversationButton.addEventListener("click", this.startNewConversation.bind(this));
 		this.endConversationButton.addEventListener("click", this.endConversation.bind(this));
+		this.startLiveKitButton.addEventListener("click", this.startLiveKitVoice.bind(this));
+		this.stopLiveKitButton.addEventListener("click", this.stopLiveKitVoice.bind(this));
 		this.scenarioList.addEventListener("click", this.selectScenario.bind(this));
 
 		this.restoreSession();
@@ -114,6 +123,10 @@ class ReceptionistApp {
 	}
 
 	startNewConversation() {
+		if (this.liveKitRoom) {
+			void this.stopLiveKitVoice();
+		}
+
 		this.resetConversationView(false);
 		this.addMessage(
 			"Receptionist",
@@ -141,6 +154,17 @@ class ReceptionistApp {
 
 	async endConversation() {
 		if (!this.conversationId || this.sendButton.disabled) {
+			return;
+		}
+
+		if (this.liveKitRoom) {
+			this.setLoading(true);
+			try {
+				await this.stopLiveKitVoice();
+				this.resetConversationView(true);
+			} finally {
+				this.setLoading(false);
+			}
 			return;
 		}
 
@@ -238,6 +262,111 @@ class ReceptionistApp {
 	setStatus(status) {
 		this.status.textContent = status.replaceAll("_", " ");
 		this.status.dataset.status = status;
+	}
+
+	async startLiveKitVoice() {
+		if (this.liveKitRoom || this.conversationLocked) {
+			return;
+		}
+
+		this.startLiveKitButton.disabled = true;
+		this.setVoiceStatus("Connecting…");
+		let room = null;
+
+		try {
+			const response = await fetch("/livekit/token", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					"X-Business-Id": BUSINESS_ID,
+				},
+				body: JSON.stringify({}),
+			});
+			const result = await response.json();
+
+			if (!response.ok) {
+				throw new Error(result.error || "Live voice is not configured.");
+			}
+
+			room = new liveKit.Room({ adaptiveStream: true, dynacast: true });
+			room.on(liveKit.RoomEvent.TrackSubscribed, (track) => {
+				if (track.kind !== "audio") {
+					return;
+				}
+
+				this.liveKitAudio.append(track.attach());
+			});
+			room.on(liveKit.RoomEvent.TrackUnsubscribed, (track) => {
+				for (const element of track.detach()) {
+					element.remove();
+				}
+			});
+			room.on(liveKit.RoomEvent.Disconnected, () => {
+				this.liveKitRoom = null;
+				this.stopLiveKitButton.disabled = true;
+				this.startLiveKitButton.disabled = false;
+				this.setVoiceStatus("Disconnected");
+			});
+
+			room.on(liveKit.RoomEvent.ParticipantDisconnected, (participant) => {
+				if (participant.identity === `agent-${result.conversationId}`) {
+					void room.disconnect();
+				}
+			});
+			await room.connect(result.serverUrl, result.participantToken);
+			await withTimeout(
+				room.localParticipant.setMicrophoneEnabled(true),
+				10_000,
+				"Microphone permission was not granted in time. Check the browser microphone setting and try again.",
+			);
+			this.liveKitRoom = room;
+			this.saveSession(result.conversationId);
+			this.setVoiceStatus("Connected — speak now");
+			this.stopLiveKitButton.disabled = false;
+		} catch (error) {
+			if (room) {
+				await room.disconnect().catch(() => undefined);
+			}
+			this.liveKitRoom = null;
+			this.setVoiceStatus("Unavailable");
+			this.startLiveKitButton.disabled = false;
+			this.addMessage(
+				"System",
+				error instanceof Error ? error.message : "Live voice could not be started.",
+				"system-message",
+			);
+		}
+	}
+
+	async stopLiveKitVoice() {
+		if (!this.liveKitRoom) {
+			return;
+		}
+
+		const room = this.liveKitRoom;
+		this.setVoiceStatus("Stopping…");
+		this.stopLiveKitButton.disabled = true;
+		await room.disconnect();
+		this.liveKitRoom = null;
+		this.startLiveKitButton.disabled = false;
+		this.setVoiceStatus("Disconnected");
+	}
+
+	setVoiceStatus(status) {
+		this.liveKitStatus.textContent = status;
+	}
+}
+
+async function withTimeout(promise, timeoutMs, message) {
+	let timeoutId;
+	const timeout = new Promise((_, reject) => {
+		timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+	});
+
+	try {
+		return await Promise.race([promise, timeout]);
+	} finally {
+		clearTimeout(timeoutId);
 	}
 }
 
