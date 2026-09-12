@@ -1223,7 +1223,11 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 				);
 			}
 
-			const alternatives = this.getAlternativeSlots(availability, requestedSlot);
+			const alternatives = this.getAlternativeSlots(
+				availability,
+				requestedSlot,
+				requestedScheduleIssue,
+			);
 			if (alternatives.length > 0) {
 				conversation.markAlternativeSlotsOffered();
 				return this.ask(
@@ -1312,15 +1316,19 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 	private getAlternativeSlots(
 		availability: AvailabilityResult,
 		requestedSlot: AppointmentSlot,
+		requestedScheduleIssue: RequestedScheduleIssue | undefined,
 	): AppointmentSlot[] {
 		const requestedStart = new Date(requestedSlot.startAt);
-		const requestedDate = getLocalDate(requestedStart, this.business.timezone);
-		const nextDate = addLocalDays(requestedDate, 1);
 		const sortedSlots = [...availability.slots].sort(
 			(first, second) =>
 				Math.abs(Date.parse(first.startAt) - requestedStart.getTime()) -
 				Math.abs(Date.parse(second.startAt) - requestedStart.getTime()),
 		);
+
+		if (requestedScheduleIssue) return sortedSlots.slice(0, 3);
+
+		const requestedDate = getLocalDate(requestedStart, this.business.timezone);
+		const nextDate = addLocalDays(requestedDate, 1);
 
 		return [
 			...sortedSlots.filter(

@@ -713,6 +713,45 @@ test("explains closed dates before offering the next open-day slots", async () =
 	assert.match(result.reply, /Monday, September 14 at 9:00 AM GMT\+5:30/);
 });
 
+test("offers later search-window slots when the next open day is unavailable", async () => {
+	const availability: CalendarAvailability = {
+		async findAvailableSlots(): Promise<AvailabilityResult> {
+			return {
+				status: "available",
+				slots: [
+					new AppointmentSlot("2026-09-15T03:30:00.000Z", "2026-09-15T04:30:00.000Z"),
+				],
+			};
+		},
+	};
+	const orchestrator = new ConversationOrchestrator(
+		configuredBusiness,
+		new FakeInterpreter({
+			intent: "book_appointment",
+			customerName: "Alex Morgan",
+			contactPhone: "+14155550100",
+			contactPhoneConfirmed: true,
+			petName: "Milo",
+			weightLb: 25,
+			rabiesVaccinationStatus: "current",
+			serviceId: "bath",
+			requestedDate: "2026-09-13",
+			requestedTime: "14:00",
+		}),
+		createDependencies(undefined, undefined, undefined, undefined, availability),
+		() => new Date("2026-09-12T12:00:00.000Z"),
+	);
+
+	const result = await orchestrator.handleMessage(
+		"Book it for Sunday at 2 PM",
+		createConversation(),
+	);
+
+	assert.equal(result.outcome.status, "needs_information");
+	assert.match(result.reply, /closed on Sunday/);
+	assert.match(result.reply, /Tuesday, September 15 at 9:00 AM GMT\+5:30/);
+});
+
 test("notifies the owner when no alternate appointment time exists", async () => {
 	let bookingCalled = false;
 	const ownerNotifier = new FakeOwnerNotifier();
