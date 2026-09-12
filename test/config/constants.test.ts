@@ -8,6 +8,8 @@ test("loads the requested business configuration", () => {
 
 	assert.ok(businessConfig);
 	assert.equal(businessConfig.name, "Maple Street Dog Grooming");
+	assert.equal(businessConfig.timezone, "Asia/Calcutta");
+	assert.equal(businessConfig.phone.countryCallingCode, "91");
 });
 
 test("returns undefined for an unknown business", () => {

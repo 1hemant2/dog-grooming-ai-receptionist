@@ -55,9 +55,9 @@ test("includes large-dog extra time when calculating available slots", async () 
 	const result = await availability.findAvailableSlots(createRequest(75));
 
 	assert.equal(result.status, "available");
-	assert.equal(result.slots.length, 84);
-	assert.equal(result.slots[0]?.startAt, "2026-09-07T16:00:00.000Z");
-	assert.equal(result.slots[0]?.endAt, "2026-09-07T17:30:00.000Z");
+	assert.equal(result.slots.length, 70);
+	assert.equal(result.slots[0]?.startAt, "2026-09-08T03:30:00.000Z");
+	assert.equal(result.slots[0]?.endAt, "2026-09-08T05:00:00.000Z");
 });
 
 test("uses the business timezone, excludes closed days, and searches seven days", async () => {
@@ -69,9 +69,9 @@ test("uses the business timezone, excludes closed days, and searches seven days"
 	);
 
 	assert.equal(result.status, "available");
-	assert.equal(result.slots[0]?.startAt, "2026-09-07T16:00:00.000Z");
-	assert.equal(eventSource.requests[0]?.timeMin, "2026-09-06T16:00:00.000Z");
-	assert.equal(eventSource.requests[0]?.timeMax, "2026-09-13T00:00:00.000Z");
+	assert.equal(result.slots[0]?.startAt, "2026-09-07T03:30:00.000Z");
+	assert.equal(eventSource.requests[0]?.timeMin, "2026-09-06T03:30:00.000Z");
+	assert.equal(eventSource.requests[0]?.timeMax, "2026-09-12T11:30:00.000Z");
 	assert.ok(result.slots.every((slot) => new Date(slot.startAt).getUTCDay() !== 0));
 });
 
@@ -80,18 +80,20 @@ test("blocks slots that overlap an existing appointment", async () => {
 	eventSource.events = [
 		{
 			id: "existing-appointment",
-			startAt: "2026-09-07T17:00:00.000Z",
-			endAt: "2026-09-07T18:00:00.000Z",
+			startAt: "2026-09-07T04:00:00.000Z",
+			endAt: "2026-09-07T05:00:00.000Z",
 		},
 	];
 	const oneDayBusiness = { ...business, availabilitySearchDays: 1 };
 	const availability = new CalendarAvailabilityService(oneDayBusiness, eventSource);
 
-	const result = await availability.findAvailableSlots(createRequest());
+	const result = await availability.findAvailableSlots(
+		createRequest(50, "2026-09-07T00:00:00.000Z"),
+	);
 
 	assert.equal(result.status, "available");
-	assert.ok(result.slots.every((slot) => slot.startAt !== "2026-09-07T17:00:00.000Z"));
-	assert.ok(result.slots.some((slot) => slot.startAt === "2026-09-07T18:00:00.000Z"));
+	assert.ok(result.slots.every((slot) => slot.startAt !== "2026-09-07T04:00:00.000Z"));
+	assert.ok(result.slots.some((slot) => slot.startAt === "2026-09-07T05:00:00.000Z"));
 });
 
 test("requires human review for oversized dogs and safety concerns", async () => {

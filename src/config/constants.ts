@@ -96,9 +96,9 @@ export const BUSINESS_CONFIGS: BusinessConfig[] = [
 	{
 		id: DEFAULT_BUSINESS_ID,
 		name: "Maple Street Dog Grooming",
-		timezone: "America/Los_Angeles",
+		timezone: "Asia/Calcutta",
 		phone: {
-			countryCallingCode: "1",
+			countryCallingCode: "91",
 			nationalNumberDigits: 10,
 		},
 		openingTime: "09:00",

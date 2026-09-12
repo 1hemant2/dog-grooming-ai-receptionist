@@ -539,8 +539,8 @@ test("offers alternate appointment times before asking for owner review", async 
 				return {
 					status: "available",
 					slots: [
-						new AppointmentSlot("2026-09-12T21:00:00.000Z", "2026-09-12T22:00:00.000Z"),
-						new AppointmentSlot("2026-09-12T23:00:00.000Z", "2026-09-13T00:00:00.000Z"),
+						new AppointmentSlot("2026-09-12T08:30:00.000Z", "2026-09-12T09:30:00.000Z"),
+						new AppointmentSlot("2026-09-12T10:30:00.000Z", "2026-09-12T11:30:00.000Z"),
 					],
 				};
 			}
@@ -548,7 +548,7 @@ test("offers alternate appointment times before asking for owner review", async 
 			return {
 				status: "available",
 				slots: [
-					new AppointmentSlot("2026-09-12T21:00:00.000Z", "2026-09-12T22:00:00.000Z"),
+					new AppointmentSlot("2026-09-12T08:30:00.000Z", "2026-09-12T09:30:00.000Z"),
 				],
 			};
 		},
@@ -589,8 +589,8 @@ test("offers alternate appointment times before asking for owner review", async 
 						contactPhone: "+14155550100",
 						petName: "Milo",
 						serviceId: "bath",
-						startAt: "2026-09-12T21:00:00.000Z",
-						endAt: "2026-09-12T22:00:00.000Z",
+						startAt: "2026-09-12T08:30:00.000Z",
+						endAt: "2026-09-12T09:30:00.000Z",
 					});
 				},
 			},
@@ -608,9 +608,9 @@ test("offers alternate appointment times before asking for owner review", async 
 	const completedResponse = await orchestrator.handleMessage("Yes", conversation);
 
 	assert.equal(alternativeResponse.outcome.status, "needs_information");
-	assert.match(alternativeResponse.reply, /3:00 PM PDT is not available/);
-	assert.match(alternativeResponse.reply, /2:00 PM PDT/);
-	assert.match(alternativeResponse.reply, /4:00 PM PDT/);
+	assert.match(alternativeResponse.reply, /3:00 PM GMT\+5:30 is not available/);
+	assert.match(alternativeResponse.reply, /2:00 PM GMT\+5:30/);
+	assert.match(alternativeResponse.reply, /4:00 PM GMT\+5:30/);
 	assert.match(confirmationResponse.reply, /confirm/);
 	assert.equal(completedResponse.outcome.status, "completed");
 	assert.equal(bookingCalled, true);
@@ -664,7 +664,7 @@ test("notifies the owner when no alternate appointment time exists", async () =>
 	assert.equal(response.outcome.status, "needs_human");
 	assert.match(response.reply, /sent your booking request to the owner/);
 	assert.equal(ownerNotifier.notifications.length, 1);
-	assert.match(ownerNotifier.notifications[0] ?? "", /3:00 PM PDT/);
+	assert.match(ownerNotifier.notifications[0] ?? "", /3:00 PM GMT\+5:30/);
 	assert.match(ownerNotifier.notifications[0] ?? "", /No suitable appointment slots/);
 	assert.equal(bookingCalled, false);
 	assert.equal(contacts.savedContacts.length, 1);
@@ -771,6 +771,7 @@ test("completes booking follow-ups locally after the initial Gemini interpretati
 				});
 			},
 		}),
+		() => new Date("2026-09-10T12:00:00.000Z"),
 	);
 	const conversation = new Conversation({
 		id: "conversation-local-follow-ups",
@@ -783,7 +784,7 @@ test("completes booking follow-ups locally after the initial Gemini interpretati
 	}
 
 	await send("I would like to book a full groom.");
-	await send("415-555-0100");
+	await send("98765-43210");
 	await send("Yes");
 	await send("Hemant Kumar");
 	await send("Milo");
@@ -793,12 +794,12 @@ test("completes booking follow-ups locally after the initial Gemini interpretati
 	const confirmationRequest = await send("11am");
 	const completed = await send("Yes");
 
-	assert.match(confirmationRequest.reply, /Friday, September 11 at 11:00 AM PDT/);
+	assert.match(confirmationRequest.reply, /Friday, September 11 at 11:00 AM GMT\+5:30/);
 	assert.equal(completed.outcome.status, "completed");
-	assert.match(completed.reply, /Friday, September 11 at 11:00 AM PDT/);
+	assert.match(completed.reply, /Friday, September 11 at 11:00 AM GMT\+5:30/);
 	assert.equal(geminiClient.callCount, 1);
-	assert.equal(bookingRequest?.contactPhone, "+14155550100");
-	assert.equal(bookingRequest?.startAt, "2026-09-11T18:00:00.000Z");
+	assert.equal(bookingRequest?.contactPhone, "+919876543210");
+	assert.equal(bookingRequest?.startAt, "2026-09-11T05:30:00.000Z");
 });
 
 test("preserves dog details while collecting the service needed for a price estimate", async () => {
@@ -1073,8 +1074,8 @@ test("includes the current and proposed times in reschedule confirmation", async
 		contactPhone: "+14155550100",
 		petName: "Roni",
 		serviceId: "bath",
-		startAt: "2026-09-11T22:00:00.000Z",
-		endAt: "2026-09-11T23:00:00.000Z",
+		startAt: "2026-09-11T09:30:00.000Z",
+		endAt: "2026-09-11T10:30:00.000Z",
 	});
 	const dependencies = createDependencies();
 	dependencies.management = {
@@ -1110,7 +1111,7 @@ test("includes the current and proposed times in reschedule confirmation", async
 	assert.equal(result.outcome.status, "needs_information");
 	assert.equal(
 		result.reply,
-		"I found Roni's Bath appointment for Friday, September 11 at 3:00 PM PDT. Would you like me to reschedule it to Saturday, September 12 at 3:00 PM PDT?",
+		"I found Roni's Bath appointment for Friday, September 11 at 3:00 PM GMT+5:30. Would you like me to reschedule it to Saturday, September 12 at 3:00 PM GMT+5:30?",
 	);
 });
 
@@ -1153,8 +1154,8 @@ test("passes confirmed booking details to the booking service", async () => {
 	assert.equal(result.outcome.status, "completed");
 	assert.equal(receivedRequest?.contactPhone, "+14155550100");
 	assert.equal(receivedRequest?.pet.name, "Milo");
-	assert.equal(receivedRequest?.startAt, "2026-09-12T17:00:00.000Z");
-	assert.equal(receivedRequest?.endAt, "2026-09-12T18:00:00.000Z");
+	assert.equal(receivedRequest?.startAt, "2026-09-12T04:30:00.000Z");
+	assert.equal(receivedRequest?.endAt, "2026-09-12T05:30:00.000Z");
 });
 
 test("preserves appointment context when persistence fails after a Calendar write", async () => {

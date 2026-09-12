@@ -175,7 +175,7 @@ test("matches a legacy sheet phone value that lost its plus sign", async () => {
 		{
 			rowNumber: 2,
 			values: [
-				"19534909390",
+				"919876543210",
 				"Hemant",
 				'[{"name":"Tommy","weightLb":25,"rabiesVaccinationStatus":"current"}]',
 				"",
@@ -185,10 +185,10 @@ test("matches a legacy sheet phone value that lost its plus sign", async () => {
 	]);
 
 	const contacts = new GoogleSheetsContacts(business, client);
-	const contact = await contacts.findByContactPhone(business.id, "+19534909390");
+	const contact = await contacts.findByContactPhone(business.id, "+919876543210");
 
 	assert.ok(contact);
-	assert.equal(contact.customer.contactPhone, "+19534909390");
+	assert.equal(contact.customer.contactPhone, "+919876543210");
 	assert.equal(contact.customer.name, "Hemant");
 	assert.equal(contact.pets[0]?.name, "Tommy");
 });

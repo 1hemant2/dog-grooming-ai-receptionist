@@ -153,11 +153,11 @@ test("rejects malformed JSON from Gemini", async () => {
 	);
 });
 
-test("normalizes a formatted US contact phone before domain validation", async () => {
+test("normalizes a formatted Indian contact phone before domain validation", async () => {
 	const client = new FakeGeminiClient();
 	client.responseText = JSON.stringify({
 		intent: "book_appointment",
-		contactPhone: "415-555-0100",
+		contactPhone: "98765-43210",
 	});
 	const interpreter = new GeminiMessageInterpreter(
 		{ apiKey: "test-key", model: "test-model" },
@@ -165,12 +165,12 @@ test("normalizes a formatted US contact phone before domain validation", async (
 	);
 
 	const result = await interpreter.interpret(
-		"Use 415-555-0100.",
+		"Use 98765-43210.",
 		configuredBusiness,
 		createConversation(),
 	);
 
-	assert.equal(result.contactPhone, "+14155550100");
+	assert.equal(result.contactPhone, "+919876543210");
 });
 
 test("ignores a contact phone that cannot be normalized safely", async () => {
@@ -201,12 +201,12 @@ test("reads an expected phone number locally without calling Gemini", async () =
 	);
 
 	const result = await interpreter.interpret(
-		"415-555-0100",
+		"98765-43210",
 		configuredBusiness,
 		createConversationAwaiting("contact_phone"),
 	);
 
-	assert.equal(result.contactPhone, "+14155550100");
+	assert.equal(result.contactPhone, "+919876543210");
 	assert.equal(client.callCount, 0);
 });
 
