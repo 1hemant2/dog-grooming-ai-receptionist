@@ -79,6 +79,12 @@ button {
 	letter-spacing: -0.04em;
 }
 
+.business-mark svg {
+	width: 1.85rem;
+	height: 1.85rem;
+	fill: currentColor;
+}
+
 .eyebrow {
 	margin: 0 0 0.35rem;
 	color: #6f858b;
