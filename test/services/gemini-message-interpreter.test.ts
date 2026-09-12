@@ -227,6 +227,30 @@ test("reads an expected customer name locally without calling Gemini", async () 
 	assert.equal(client.callCount, 0);
 });
 
+test("preserves an exact-time request while confirming the phone number", async () => {
+	const client = new FakeGeminiClient();
+	client.responseText = JSON.stringify({
+		intent: "book_appointment",
+		conversationAction: "continue",
+	});
+	const interpreter = new GeminiMessageInterpreter(
+		{ apiKey: "test-key", model: "test-model" },
+		client,
+		() => new Date("2026-09-12T12:00:00.000Z"),
+	);
+
+	const result = await interpreter.interpret(
+		"Tomorrow at 6 PM is the only time that works for me.",
+		configuredBusiness,
+		createConversationAwaiting("contact_phone_confirmation"),
+	);
+
+	assert.equal(result.conversationAction, "require_exact_time");
+	assert.equal(result.requestedDate, "2026-09-13");
+	assert.equal(result.requestedTime, "18:00");
+	assert.equal(client.callCount, 1);
+});
+
 test("reads natural booking approval locally without calling Gemini", async () => {
 	const client = new FakeGeminiClient();
 	const interpreter = new GeminiMessageInterpreter(

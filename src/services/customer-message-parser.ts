@@ -133,11 +133,13 @@ export function interpretExpectedAnswer(
 			);
 			if (requestedDate) {
 				const requestedTime = extractRequestedTime(message, true);
-				return {
+				const interpretedMessage: InterpretedMessage = {
 					intent: activeIntent,
 					requestedDate,
 					...(requestedTime ? { requestedTime } : {}),
 				};
+				markExactTimeRequest(interpretedMessage, message);
+				return interpretedMessage;
 			}
 			return isContinuationAcknowledgement(message) ? { intent: activeIntent } : undefined;
 		}
@@ -150,11 +152,13 @@ export function interpretExpectedAnswer(
 				business.timezone,
 				currentLocalDate,
 			);
-			return {
+			const interpretedMessage: InterpretedMessage = {
 				intent: activeIntent,
 				requestedTime,
 				...(requestedDate ? { requestedDate } : {}),
 			};
+			markExactTimeRequest(interpretedMessage, message);
+			return interpretedMessage;
 		}
 		case "appointment_confirmation": {
 			const confirmation = extractConfirmation(message, true);
@@ -185,12 +189,24 @@ export function applyFactsFromCustomerMessage(
 
 	const requestedTime = extractRequestedTime(message, false);
 	if (requestedTime) interpretedMessage.requestedTime = requestedTime;
+	markExactTimeRequest(interpretedMessage, message);
 
 	const service = extractService(message, business);
 	if (service) {
 		interpretedMessage.serviceId = service.id;
 		interpretedMessage.serviceName = service.name;
 	}
+}
+
+function markExactTimeRequest(interpretedMessage: InterpretedMessage, message: string): void {
+	if (!interpretedMessage.requestedDate || !interpretedMessage.requestedTime) return;
+
+	const normalizedMessage = normalizeWords(message);
+	const saysOnlyTimeWorks =
+		/\bonly\b.*\b(work|works|option|possible|can do)\b/.test(normalizedMessage) ||
+		/\bno\s+(other|alternative|different|another)\s+(date|time)\b/.test(normalizedMessage);
+
+	if (saysOnlyTimeWorks) interpretedMessage.conversationAction = "require_exact_time";
 }
 
 export function interpretServiceDetailsQuestion(

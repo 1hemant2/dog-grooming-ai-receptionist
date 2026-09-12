@@ -1330,7 +1330,7 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 		const requestedDate = getLocalDate(requestedStart, this.business.timezone);
 		const nextDate = addLocalDays(requestedDate, 1);
 
-		return [
+		const nearbySlots = [
 			...sortedSlots.filter(
 				(slot) =>
 					getLocalDate(new Date(slot.startAt), this.business.timezone) === requestedDate,
@@ -1339,6 +1339,8 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 				(slot) => getLocalDate(new Date(slot.startAt), this.business.timezone) === nextDate,
 			),
 		].slice(0, 3);
+
+		return nearbySlots.length > 0 ? nearbySlots : sortedSlots.slice(0, 3);
 	}
 
 	private formatAlternativeSlotsReply(
