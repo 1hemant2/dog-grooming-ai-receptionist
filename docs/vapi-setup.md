@@ -47,9 +47,11 @@ Extract `reply` as a required string and `endCall` as an optional boolean. The a
 
 Configure delayed response messages:
 
-- At approximately 1.2 seconds: “Got it—give me just a moment.”
-- At approximately 5 seconds: “Thanks for your patience—I’m still working on it.”
-- At approximately 12 seconds: “This is taking a little longer than expected, but I’m still on it.”
+- At approximately 1.2 seconds, select one short acknowledgment: “Thanks, I’ve got that.”, “Thanks for letting me know.”, or “Got it—thanks for the details.”
+- At approximately 5 seconds: “Thanks for waiting—I’m still with you.”
+- At approximately 12 seconds: “This is taking a little longer than expected. I’m still here with you.”
+
+The first message only acknowledges what the caller said, so it remains natural after a name, phone number, service choice, or question. The later messages explain the actual wait.
 
 Publish the tool after changing it.
 

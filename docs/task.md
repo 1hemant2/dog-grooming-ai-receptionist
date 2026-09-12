@@ -29,7 +29,7 @@ This is the implementation backlog. The approved Phase 1 behavior remains in
 - [x] T12 — Vapi contract, configuration, and security
 - [x] T13 — Vapi conversation turn adapter
 - [x] T14 — Vapi call lifecycle and delivery safety
-- [ ] T15 — Voice end-to-end verification and documentation
+- [x] T15 — Voice end-to-end verification and documentation
 
 ## T00 — Repository foundation
 
@@ -312,8 +312,8 @@ Expected flow:
 2. The adapter resolves the business and creates or resumes the matching conversation.
 3. Each final customer utterance is passed to the existing conversation handler.
 4. Fast responses are returned without playing an unnecessary waiting message.
-5. If the application has not responded after approximately 1.2 seconds, Vapi tells the caller, "I’m checking that for you. One moment, please."
-6. If processing is still running after approximately 7 seconds, Vapi tells the caller, "Thanks for your patience. I’m still working on that."
+5. If the application has not responded after approximately 1.2 seconds, Vapi plays a short acknowledgment that remains natural after any customer answer.
+6. If processing is still running after approximately 5 and 12 seconds, Vapi gives progressively clearer waiting messages.
 7. When processing finishes, the adapter returns the receptionist's actual reply in the response format expected by Vapi.
 8. Existing services continue to perform availability, booking, rescheduling, cancellation, persistence, and owner notification.
 
@@ -322,7 +322,7 @@ Latency behavior:
 - The first waiting message is triggered at approximately 1.2 seconds, based on elapsed response time rather than the orchestrator's internal Gemini decision.
 - Keep the existing conversation orchestrator and its tested business behavior unchanged.
 - Configure waiting messages in Vapi when the backend is invoked as a tool. If a custom-LLM adapter is selected, implement the same behavior with a small adapter-level timer and streamed response.
-- Use an approximately 15-second voice request timeout and return a controlled failure message when it expires.
+- Use a voice request timeout longer than the backend's configured provider timeout and return a controlled failure message when it expires.
 - Do not automatically retry conversation turns or operations that may write to Calendar, Sheets, or Telegram.
 - Waiting messages improve the caller experience but do not count as completion of the requested operation.
 
@@ -377,7 +377,7 @@ Goal: Deliver a reproducible Vapi voice demonstration using the completed backen
 
 Complete when:
 
-- The Vapi API Request Tool uses the agreed waiting messages after approximately 1.2 and 7 seconds.
+- The Vapi API Request Tool uses the agreed waiting messages after approximately 1.2, 5, and 12 seconds.
 - Fast responses do not play a waiting message, and delayed messages do not replace the final receptionist reply.
 - Vapi can conduct a multi-turn voice conversation using the existing receptionist behavior.
 - At least one voice booking, rescheduling, and cancellation reaches the existing Calendar and Sheets integrations.

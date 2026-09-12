@@ -1,108 +1,106 @@
-# Maple Street Receptionist
+# Maple Street AI Receptionist
 
-Phase 1 of the ProcIndex take-home: a text-based AI receptionist for a dog-grooming shop.
+A TypeScript receptionist for Maple Street Dog Grooming. The same application supports browser chat and the Vapi voice assistant. It answers business questions, manages appointments through Google Calendar, stores contacts and conversation outcomes in Google Sheets, and notifies the owner through Telegram when human judgment is required.
 
-## Requirements
+## System overview
 
-- Node.js 22 or newer
-- npm 10 or newer
-- Gemini API access
-- A Google service account with access to the demo Calendar and Sheet
-- A Telegram bot and chat for owner notifications
+| Channel         | Entry point                         | Conversation identity                         |
+| --------------- | ----------------------------------- | --------------------------------------------- |
+| Browser chat    | `POST /conversations/messages`      | Server-generated or supplied `conversationId` |
+| Vapi voice      | `POST /vapi/conversations/messages` | Trusted Vapi call ID                          |
+| Call completion | `POST /vapi/events`                 | Vapi `end-of-call-report`                     |
 
-## Setup
+Both channels use the same conversation orchestrator and business services. Vapi handles telephony, transcription, and speech; it does not duplicate the receptionist's business logic.
+
+## Supported behavior
+
+| Request                                      | Automated behavior                                                                             | Human handoff                                                |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| Services, prices, hours, breeds, vaccination | Answers from business configuration                                                            | Missing policy or safety judgment                            |
+| Booking                                      | Checks the full service duration, offers nearby alternatives, confirms, then creates one event | Dog over 100 lb, safety concern, or no acceptable slot       |
+| Rescheduling and cancellation                | Verifies customer and pet, enforces confirmation, then updates Calendar                        | Appointment starts within 24 hours                           |
+| Running late                                 | Records and notifies delays under 15 minutes                                                   | Delay of 15 minutes or more                                  |
+| Complaints                                   | Records routine feedback                                                                       | Refunds, charges, injuries, safety, or unresolved complaints |
+
+The receptionist asks for one missing detail at a time. Customer-specific operations use a confirmed contact number rather than assuming the incoming caller number is the preferred contact number.
+
+## How it works
+
+```mermaid
+flowchart TD
+	A[Browser chat or Vapi] --> B[Express controller]
+	B --> C[Conversation store]
+	C --> D[Conversation orchestrator]
+	D --> E[Local parser or Gemini interpreter]
+	E --> F[Deterministic business services]
+	F --> G[Google Calendar]
+	F --> H[Google Sheets]
+	F --> I[Telegram owner notification]
+```
+
+1. The controller validates the request and resolves the business from trusted transport metadata.
+2. The in-memory store creates or resumes the conversation.
+3. Clear follow-up answers such as names, phone numbers, dates, times, and confirmations are parsed locally. Gemini handles natural-language intent and ambiguous meaning.
+4. The orchestrator preserves collected facts and selects the next business operation or single follow-up question.
+5. Deterministic services enforce pricing, safety, availability, confirmation, and handoff rules.
+6. Calendar changes are checked immediately before writing. Contacts and final conversation outcomes are written to Sheets.
+7. Ending a chat or Vapi call writes one Call Log row, then removes conversation state. A failed final write preserves state for retry.
+
+## Key design decisions
+
+| Decision                                                       | Reason                                                                                     |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| One application core with HTTP and Vapi adapters               | Keeps text and voice behavior consistent and independently testable                        |
+| LLM for interpretation and final summaries only                | Business rules, confirmations, and external writes remain predictable                      |
+| Business configuration collection                              | A new vendor can be added without rewriting controllers or workflows                       |
+| Small interfaces around Calendar, Sheets, Gemini, and Telegram | Core tests use fakes and do not call live providers                                        |
+| Business-local timezone with UTC persistence                   | Customers hear local times while external records remain unambiguous                       |
+| Process-local conversation state and idempotency               | Keeps the current deployment simple; a production deployment would use durable storage     |
+| One Call Log row per conversation                              | Captures all handled intents and the final outcome without logging every message as a call |
+| Staged Vapi delay messages                                     | Acknowledges slow work at about 1.2, 5, and 12 seconds without replacing the final reply   |
+
+## Run locally
+
+Requirements: Node.js 22 or newer, Gemini access, a Google service account, a Google Sheet, a Google Calendar, and a Telegram bot/chat.
 
 ```bash
 npm install
 cp .env.example .env
+npm run build
+npm start
 ```
 
-Configure `.env`, then create a `Contacts` tab in the Google Sheet and add a few future Calendar
-events that demonstrate an occupied slot and a rescheduling option. The exact columns are described
-in [docs/demo.md](docs/demo.md).
+`npm start` loads `.env` and serves the chat at `http://localhost:3000`. For development with environment variables supplied by the shell or IDE, use `npm run dev`.
 
-Start the application:
+The required configuration is grouped by provider:
+
+- Gemini: `GEMINI_API_KEY` and optional `GEMINI_MODEL`.
+- Google: `GOOGLE_CLIENT_EMAIL`, `GOOGLE_PRIVATE_KEY`, `GOOGLE_SPREADSHEET_ID`, and `GOOGLE_CALENDAR_ID`.
+- Telegram: `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`.
+- Vapi: `VAPI_SERVER_TOKEN`, `VAPI_PHONE_NUMBER`, and `VAPI_BUSINESS_ID`.
+
+Enable the Google Sheets and Calendar APIs. Share the Sheet and Calendar with `GOOGLE_CLIENT_EMAIL`; Calendar access must allow event changes. Keep all credentials outside Git.
+
+## Verification
 
 ```bash
-npm run dev
+npm run check
+npm run build
 ```
 
-Open `http://localhost:3000` for the browser demo or check the API with:
+Example end-to-end workflows:
 
-```bash
-curl http://localhost:3000/health
-```
+1. In the browser chat, book or reschedule an appointment and show that the UI, Calendar event, Contacts row, and final Call Log row agree.
+2. In Vapi, complete a real multi-turn call, show a natural delayed acknowledgment when applicable, and verify the resulting Calendar/Sheets change or Telegram handoff.
 
-The complete setup and scenario walkthrough is in [docs/demo.md](docs/demo.md).
+Additional guides:
 
-## Environment variables
+- [Browser workflow guide](docs/demo.md)
+- [Vapi voice setup](docs/vapi-setup.md)
+- [Confirmed business flows](.agents/skills/program-flow/references/requirements.md)
 
-| Variable                | Required | Purpose                                                  |
-| ----------------------- | -------- | -------------------------------------------------------- |
-| `PORT`                  | No       | HTTP port; defaults to `3000`                            |
-| `GEMINI_API_KEY`        | Yes      | Authenticates Gemini requests                            |
-| `GEMINI_MODEL`          | No       | Gemini model; defaults to `gemini-3.5-flash`             |
-| `GOOGLE_CLIENT_EMAIL`   | Yes      | Google service-account email                             |
-| `GOOGLE_PRIVATE_KEY`    | Yes      | Service-account private key with newlines stored as `\n` |
-| `GOOGLE_SPREADSHEET_ID` | Yes      | Spreadsheet containing `Contacts` and `Call Log`         |
-| `GOOGLE_CALENDAR_ID`    | Yes      | Calendar used for availability and appointments          |
-| `TELEGRAM_BOT_TOKEN`    | Yes      | Telegram bot used for owner notifications                |
-| `TELEGRAM_CHAT_ID`      | Yes      | Telegram owner-notification destination                  |
+## Known scope limits
 
-Enable the Google Sheets and Google Calendar APIs. Share both configured resources with
-`GOOGLE_CLIENT_EMAIL`; the Calendar must allow the service account to change events. An API key
-alone cannot authorize these writes.
-
-## HTTP API
-
-Send a customer message to `POST /conversations/messages` with `X-Business-Id` as trusted request
-metadata:
-
-```bash
-curl --request POST http://localhost:3000/conversations/messages \
-  --header 'Content-Type: application/json' \
-  --header 'X-Business-Id: maple-street-dog-grooming' \
-  --data '{"callerPhone":"+14155550100","message":"What time do you open?"}'
-```
-
-The body accepts `message`, optional `callerPhone`, and optional `conversationId`. A response
-contains `conversationId`, `status`, and `reply`, plus `appointmentId` when applicable. Send the
-returned conversation ID with later messages. Phase 1 state is in memory and is lost on restart.
-
-`callerPhone` is optional channel metadata. Customer-specific operations separately collect and
-confirm the preferred contact phone before reading or changing appointment data.
-
-End a conversation with `POST /conversations/:conversationId/end`. This writes one final Call Log
-row containing all handled intents and the final outcome, then removes the conversation from memory
-only after the Sheets write succeeds.
-
-## Architecture
-
-- `src/models/` owns validated domain state.
-- `src/services/` contains business use cases and provider adapters.
-- `src/controllers/` validates HTTP input and creates responses.
-- `src/routes/` maps URLs to controllers.
-- `src/app/` composes dependencies for each configured business.
-- `src/http/` owns Express and server lifecycle behavior.
-- `src/config/` centralizes application and business configuration.
-- `public/` contains the dependency-free browser demo.
-- `.agents/skills/program-flow/references/requirements.md` is the behavior source of truth.
-
-The LLM only interprets natural language into validated fields. Deterministic services own business
-rules, confirmations, availability, and external writes. Google and Telegram SDKs stay behind
-small application boundaries so tests use fakes rather than live services.
-
-## Commands
-
-- `npm run dev` starts the development server with reloads.
-- `npm run build` compiles TypeScript into `dist/`.
-- `npm start` runs the compiled server.
-- `npm test` runs the tests.
-- `npm run check` runs formatting, linting, type checking, and tests.
-
-## Phase 1 limitations
-
-- Conversations and duplicate-operation guards are process-local and do not survive a restart.
-- Production multi-instance deployment would require durable conversation and idempotency storage.
-- Holiday hours, payment collection, automatic refunds, and voice-provider integration are outside
-  Phase 1.
+- Conversation state and duplicate-operation guards are in memory and do not survive a restart.
+- The local Vapi setup uses an HTTPS tunnel; the application and tunnel must remain running.
+- Holiday hours, payments, automatic refunds, and multi-location administration are outside the current scope.

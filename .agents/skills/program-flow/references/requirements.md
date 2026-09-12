@@ -55,7 +55,7 @@ Build a text-based AI receptionist for Maple Street Dog Grooming. It should hand
 - Every service has a configured duration. Calendar availability must cover the complete service duration.
 - Shop hours, timezone, services, durations, and starting prices come from configured shop information.
 - A confirmed `contactPhone` identifies a contact. Confirm the customer's name and pet name when finding an existing appointment.
-- Maple Street accepts a 10-digit US contact number in natural customer speech and normalizes it to E.164 with the `+1` country code before confirmation and persistence.
+- Maple Street accepts a 10-digit Indian contact number in natural customer speech and normalizes it to E.164 with the `+91` country code before confirmation and persistence.
 - Prices are estimates. The final price may depend on the dog's size, coat condition, behavior, and time required.
 - The receptionist may book, reschedule, or cancel appointments, but it does not take payments, issue refunds, or apply fees.
 - Automated cancellations and rescheduling require at least 24 hours' notice. Requests inside 24 hours go to a human.
@@ -63,7 +63,7 @@ Build a text-based AI receptionist for Maple Street Dog Grooming. It should hand
 - Current rabies vaccination proof is required before grooming. Unclear vaccination cases go to a human.
 - Do not reject a dog based only on breed. Safety-sensitive cases involving size, health, aggression, or severe anxiety go to a human.
 - The shop is open Monday through Saturday from 9:00 AM to 5:00 PM and closed on Sunday.
-- The shop timezone is `America/Los_Angeles`. No special holiday hours are defined for Phase 1.
+- The shop timezone is `Asia/Calcutta`. No special holiday hours are defined for Phase 1.
 - Bath starts at $45 and takes 60 minutes.
 - Bath includes shampoo and conditioner, blow-drying, brushing, ear cleaning, and a nail trim.
 - Bath and Trim starts at $70, takes 90 minutes, and adds light trimming around the face, feet, and sanitary areas to the Bath service.
@@ -215,5 +215,5 @@ Persist collected callback contact details before notifying the owner when a hum
 
 ### Call Log
 
-Keep one row per conversation with the timestamp, conversation ID, `callerPhone` when available, confirmed `contactPhone` when collected, all handled intents in conversation order, the final outcome, appointment identifier, and human-handoff summary when applicable.
-Build the human-readable outcome summary from deterministic conversation facts and the final outcome. Do not make an extra LLM request only to summarize the conversation.
+Keep one row per conversation with the start and end timestamps, conversation ID, `callerPhone` when available, confirmed `contactPhone` when collected, all handled intents in conversation order, the final outcome, appointment identifier, and human-handoff summary when applicable.
+At finalization, the LLM may turn the deterministic conversation facts and final outcome into one short human-readable summary. The outcome status, appointment identifier, callback flag, and business facts remain deterministic; if summarization fails, use the deterministic fallback summary and still write the Call Log.

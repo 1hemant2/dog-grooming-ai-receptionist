@@ -19,7 +19,7 @@ Keep `.env` local. Never commit or paste its values into screenshots, logs, or r
 Create the `Contacts` tab in the configured Google Sheet and add one or two future Calendar events.
 The records should include:
 
-- Alex Morgan at `+14155550100`, with Milo as a 65 lb Golden Retriever with current rabies proof.
+- Alex Morgan at `+919876543210`, with Milo as a 65 lb Golden Retriever with current rabies proof.
 - One future 60-minute Bath appointment for Milo.
 - One 60-minute blocked Calendar slot on the next open day.
 
@@ -90,7 +90,7 @@ the final outcome is recorded in `Call Log`.
 
 Use a new conversation and an open date from the Calendar. Send:
 
-`My name is Jordan Lee. I confirm +14155550102 as my contact number. My dog Daisy is 30 lb, has current rabies vaccination, and needs a Bath at [OPEN DATE AND TIME]. I confirm the booking details.`
+`My name is Jordan Lee. I confirm +919876543211 as my contact number. My dog Daisy is 30 lb, has current rabies vaccination, and needs a Bath at [OPEN DATE AND TIME]. I confirm the booking details.`
 
 Verify that the browser displays `completed` and an appointment ID, Calendar contains one new
 event, and `Contacts` contains Jordan and Daisy. End the conversation and verify that `Call Log`
@@ -101,7 +101,7 @@ event.
 
 Use the seeded Alex and Milo record:
 
-1. Send `I am Alex Morgan. I confirm +14155550100 as my contact number. I need to reschedule Milo's appointment.`
+1. Send `I am Alex Morgan. I confirm +919876543210 as my contact number. I need to reschedule Milo's appointment.`
 2. Request the occupied Calendar time and verify that no Calendar change occurs.
 3. Request an open Calendar time and explicitly confirm the move.
 
@@ -112,7 +112,7 @@ the conversation and verify that `Call Log` records the result.
 
 Reset the demo appointment in Calendar, start a new conversation, and send:
 
-`I am Alex Morgan. I confirm +14155550100 as my contact number. Please cancel Milo's appointment. I confirm the cancellation.`
+`I am Alex Morgan. I confirm +919876543210 as my contact number. Please cancel Milo's appointment. I confirm the cancellation.`
 
 Verify that Calendar cancels the event and Telegram receives the owner notification. End the
 conversation and verify that `Call Log` records the cancellation.
@@ -125,7 +125,7 @@ Reset the demo appointment in Calendar before this scenario.
 - In a new conversation, send a 15-minute delay and verify a `needs_human` response without an
   automatic schedule decision.
 
-Example: `I am Alex Morgan and confirm +14155550100 as my contact number. Milo and I will be 10 minutes late for his appointment.`
+Example: `I am Alex Morgan and confirm +919876543210 as my contact number. Milo and I will be 10 minutes late for his appointment.`
 
 End each conversation and verify that the outcome is recorded in `Call Log`.
 
@@ -133,10 +133,10 @@ End each conversation and verify that the outcome is recorded in `Call Log`.
 
 Use a new conversation for each case:
 
-- Refund decision: `I am Alex Morgan and confirm +14155550100 as my contact number. Milo's appointment has a disputed $95 charge and I want a refund.`
-- Safety concern: `I am Alex Morgan and confirm +14155550100 as my contact number. I need to report an injury concern after Milo's grooming.`
-- Other unresolved complaint: `I am Alex Morgan and confirm +14155550100 as my contact number. I want the owner to call me about an unresolved grooming complaint.`
-- Resolved operational concern: `I am Alex Morgan and confirm +14155550100 as my contact number. I had trouble finding the entrance, but the posted sign resolved it. Please record this feedback.`
+- Refund decision: `I am Alex Morgan and confirm +919876543210 as my contact number. Milo's appointment has a disputed $95 charge and I want a refund.`
+- Safety concern: `I am Alex Morgan and confirm +919876543210 as my contact number. I need to report an injury concern after Milo's grooming.`
+- Other unresolved complaint: `I am Alex Morgan and confirm +919876543210 as my contact number. I want the owner to call me about an unresolved grooming complaint.`
+- Resolved operational concern: `I am Alex Morgan and confirm +919876543210 as my contact number. I had trouble finding the entrance, but the posted sign resolved it. Please record this feedback.`
 
 Verify that refund, safety, and unresolved cases request human follow-up without promising fault,
 refunds, or compensation. The resolved operational concern may be recorded as completed when the
