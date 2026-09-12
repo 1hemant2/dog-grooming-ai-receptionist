@@ -99,6 +99,7 @@ Example end-to-end workflows:
 
 Additional guides:
 
+- [Architecture and request flow](docs/architecture.md)
 - [Browser workflow guide](docs/demo.md)
 - [LiveKit browser voice setup](docs/livekit-setup.md)
 - [Vapi voice setup](docs/vapi-setup.md)
@@ -108,5 +109,5 @@ Additional guides:
 
 - Conversation state and duplicate-operation guards are in memory and do not survive a restart.
 - The local Vapi setup uses an HTTPS tunnel; the application and tunnel must remain running.
-- LiveKit's agent worker must remain running alongside the HTTP server. The browser UI uses LiveKit's WebRTC microphone and speaker path, so the browser must be allowed to access the selected microphone.
+- LiveKit voice runs inside the same Node.js process as the HTTP server; no agent worker or Redis service is required. The browser UI uses LiveKit's WebRTC microphone and speaker path, so the browser must be allowed to access the selected microphone.
 - Holiday hours, payments, automatic refunds, and multi-location administration are outside the current scope.

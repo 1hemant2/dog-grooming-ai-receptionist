@@ -97,6 +97,16 @@ event, and `Contacts` contains Jordan and Daisy. End the conversation and verify
 records one completed booking. Sending the same confirmed message again must not create another
 event.
 
+### Request a time outside business hours
+
+Start a new conversation after confirming the customer and pet details, then request a two-hour
+Full Groom at 6:00 PM on an open weekday.
+
+Verify that the receptionist explains that Maple Street is open Monday through Saturday from 9:00
+AM to 5:00 PM, states that the latest Full Groom start is 3:00 PM, and offers actual available
+Calendar slots. Verify that no Calendar event is created until an offered time is selected and
+confirmed. Repeat with Sunday to verify the closed-day explanation.
+
 ### Reschedule an appointment
 
 Use the seeded Alex and Milo record:
@@ -142,6 +152,13 @@ Verify that refund, safety, and unresolved cases request human follow-up without
 refunds, or compensation. The resolved operational concern may be recorded as completed when the
 interpreter extracts the stated resolution. End each conversation and verify the final outcome in
 `Call Log`.
+
+### Telegram handoff
+
+When a request needs owner review, verify that Telegram receives a plain-text message with an alert
+header, business and conversation context, customer details, requested appointment or service,
+and a separated reason. Do not include `.env` values, API keys, or private keys in the message or
+in demo screenshots.
 
 ## Final verification
 
