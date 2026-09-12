@@ -48,6 +48,7 @@ import type {
 	MessageInterpreter,
 	OwnerNotifier,
 	ContactRecord,
+	ConversationOutcomeSummarizer,
 } from "./receptionist-dependencies.js";
 
 export interface ConversationResponse {
@@ -76,6 +77,7 @@ export interface ConversationOrchestratorDependencies {
 	support: Pick<CustomerSupportService, "handleLateArrival" | "recordComplaint">;
 	ownerNotifier: Pick<OwnerNotifier, "notify">;
 	contacts: Pick<Contacts, "findByContactPhone" | "save">;
+	outcomeSummarizer?: Pick<ConversationOutcomeSummarizer, "summarize">;
 }
 
 interface AppointmentIdentityWithConversation extends AppointmentIdentity {
@@ -110,7 +112,7 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 			);
 		const intents: readonly ReceptionistIntent[] =
 			conversation.intents.length > 0 ? conversation.intents : ["unknown"];
-		const callLogOutcome = this.createCallLogOutcome(conversation, outcome);
+		const callLogOutcome = await this.createCallLogOutcome(conversation, outcome);
 
 		await this.persistConversationContact(conversation);
 
@@ -120,6 +122,7 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 			intents,
 			outcome: callLogOutcome,
 			endedAt: this.clock().toISOString(),
+			startedAt: conversation.startedAt.toISOString(),
 			...(conversation.callerPhone ? { callerPhone: conversation.callerPhone } : {}),
 			...(conversation.contactPhone ? { contactPhone: conversation.contactPhone } : {}),
 		});
@@ -1660,7 +1663,33 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 		conversation.markContactPersisted();
 	}
 
-	private createCallLogOutcome(
+	private async createCallLogOutcome(
+		conversation: Conversation,
+		outcome: ConversationOutcome,
+	): Promise<ConversationOutcome> {
+		const deterministicOutcome = this.createDeterministicCallLogOutcome(conversation, outcome);
+		const summarizer = this.dependencies.outcomeSummarizer;
+
+		if (!summarizer) return deterministicOutcome;
+
+		try {
+			const summary = await summarizer.summarize(
+				this.business,
+				conversation,
+				deterministicOutcome,
+			);
+			return createConversationOutcome(outcome.status, summary, outcome.appointmentId);
+		} catch (error) {
+			console.error("Call Log outcome summarization failed.", {
+				businessId: conversation.businessId,
+				conversationId: conversation.id,
+				errorName: error instanceof Error ? error.constructor.name : "UnknownError",
+			});
+			return deterministicOutcome;
+		}
+	}
+
+	private createDeterministicCallLogOutcome(
 		conversation: Conversation,
 		outcome: ConversationOutcome,
 	): ConversationOutcome {
@@ -1669,7 +1698,7 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 		const intentLabels = intents.map((intent) => this.getIntentLabel(intent));
 		const handledRequests =
 			intentLabels.length === 1
-				? `Handled a ${intentLabels[0]} request.`
+				? `Handled ${/^[aeiou]/i.test(intentLabels[0] ?? "") ? "an" : "a"} ${intentLabels[0]} request.`
 				: `Handled ${this.joinLabels(intentLabels)} requests.`;
 		const requestDetails = this.getRequestDetails(conversation.activeRequest);
 		const context = [handledRequests, requestDetails].filter(Boolean).join(" ");

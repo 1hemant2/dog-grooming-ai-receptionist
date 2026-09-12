@@ -228,6 +228,7 @@ test("records completed or handed-off conversations in the Call Log tab", async 
 			"Owner callback requested for a complaint.",
 		),
 		endedAt: "2026-09-09T12:00:00.000Z",
+		startedAt: "2026-09-09T11:55:00.000Z",
 	};
 
 	await callLog.append(entry);
@@ -238,6 +239,7 @@ test("records completed or handed-off conversations in the Call Log tab", async 
 	assert.deepEqual(rows[0]?.values, [
 		"businessId",
 		"conversationId",
+		"startedAt",
 		"endedAt",
 		"callerPhone",
 		"contactPhone",
@@ -250,6 +252,7 @@ test("records completed or handed-off conversations in the Call Log tab", async 
 	assert.deepEqual(rows[1]?.values, [
 		business.id,
 		"conversation-123",
+		"2026-09-09T11:55:00.000Z",
 		"2026-09-09T12:00:00.000Z",
 		"+14155550100",
 		"+14155550100",

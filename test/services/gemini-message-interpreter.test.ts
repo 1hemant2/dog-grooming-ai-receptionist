@@ -108,6 +108,33 @@ test("converts Gemini JSON into validated receptionist fields", async () => {
 	);
 });
 
+test("summarizes the final business outcome instead of the last question", async () => {
+	const client = new FakeGeminiClient();
+	client.responseText = "Milo's Bath appointment was booked successfully.";
+	const interpreter = new GeminiMessageInterpreter(
+		{ apiKey: "test-key", model: "test-model" },
+		client,
+	);
+	const conversation = createConversation();
+	conversation.addMessage("receptionist", "What name should I put on the appointment?");
+	const outcome = createConversationOutcome(
+		"completed",
+		"What name should I put on the appointment?",
+		"appointment-123",
+	);
+
+	const summary = await interpreter.summarize(configuredBusiness, conversation, outcome);
+
+	assert.equal(summary, "Milo's Bath appointment was booked successfully.");
+	assert.equal(client.parameters?.model, "test-model");
+	assert.equal(
+		client.parameters?.config?.maxOutputTokens,
+		APPLICATION_CONFIG.outcomeSummaryMaxOutputTokens,
+	);
+	assert.match(String(client.parameters?.contents), /final business result/i);
+	assert.match(String(client.parameters?.contents), /Final outcome status: completed/);
+});
+
 test("rejects malformed JSON from Gemini", async () => {
 	const client = new FakeGeminiClient();
 	client.responseText = "not-json";

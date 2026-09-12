@@ -271,6 +271,7 @@ export class GoogleSheetsCallLog implements CallLog {
 		return [
 			entry.businessId,
 			entry.conversationId,
+			entry.startedAt,
 			entry.endedAt,
 			entry.callerPhone ?? "",
 			entry.contactPhone ?? "",

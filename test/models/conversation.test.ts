@@ -35,6 +35,16 @@ test("records conversation messages, intents, and outcome", () => {
 	assert.equal(conversation.outcome, outcome);
 });
 
+test("preserves the time when the conversation started", () => {
+	const startedAt = new Date("2026-09-09T12:00:00.000Z");
+	const conversation = new Conversation(conversationDetails, startedAt);
+
+	conversation.markActivity(new Date("2026-09-09T12:05:00.000Z"));
+
+	assert.deepEqual(conversation.startedAt, startedAt);
+	assert.deepEqual(conversation.lastActivityAt, new Date("2026-09-09T12:05:00.000Z"));
+});
+
 test("allows a conversation to associate a phone number later", () => {
 	const conversation = new Conversation({
 		id: "conversation-without-phone",

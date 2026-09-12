@@ -41,18 +41,19 @@ The `Contacts` tab uses these columns:
 
 The `Call Log` tab uses these columns:
 
-| Column              | Meaning                                                             |
-| ------------------- | ------------------------------------------------------------------- |
-| `businessId`        | Business that handled the conversation                              |
-| `conversationId`    | Request and follow-up correlation ID                                |
-| `endedAt`           | Outcome timestamp in ISO format                                     |
-| `callerPhone`       | Optional channel-provided caller number                             |
-| `contactPhone`      | Customer-confirmed contact number                                   |
-| `intents`           | All handled requests in first-seen order, comma-separated           |
-| `outcomeStatus`     | Answered, completed, unavailable, needs-information, or needs-human |
-| `outcomeSummary`    | Context needed to understand or continue the request                |
-| `callbackRequested` | Whether owner follow-up is required                                 |
-| `appointmentId`     | Related Calendar event ID when available                            |
+| Column              | Meaning                                                                |
+| ------------------- | ---------------------------------------------------------------------- |
+| `businessId`        | Business that handled the conversation                                 |
+| `conversationId`    | Request and follow-up correlation ID                                   |
+| `startedAt`         | Time when the application created the conversation                     |
+| `endedAt`           | Outcome timestamp in ISO format                                        |
+| `callerPhone`       | Optional channel-provided caller number                                |
+| `contactPhone`      | Customer-confirmed contact number                                      |
+| `intents`           | All handled requests in first-seen order, comma-separated              |
+| `outcomeStatus`     | Answered, completed, unavailable, needs-information, or needs-human    |
+| `outcomeSummary`    | Short final business result from Gemini, with a deterministic fallback |
+| `callbackRequested` | Whether owner follow-up is required                                    |
+| `appointmentId`     | Related Calendar event ID when available                               |
 
 ## Run the browser demo
 

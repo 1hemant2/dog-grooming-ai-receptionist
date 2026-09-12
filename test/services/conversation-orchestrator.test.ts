@@ -26,12 +26,14 @@ import type {
 	CallLogEntry,
 	CalendarAvailability,
 	ContactRecord,
+	ConversationOutcomeSummarizer,
 	Contacts,
 	MessageInterpreter,
 	OwnerNotifier,
 } from "../../src/services/receptionist-dependencies.js";
 import {
 	createConversationOutcome,
+	type ConversationOutcome,
 	type InterpretedMessage,
 } from "../../src/models/receptionist.js";
 
@@ -87,6 +89,29 @@ class FakeCallLog implements CallLog {
 
 	async append(entry: CallLogEntry): Promise<void> {
 		this.entries.push(entry);
+	}
+}
+
+class FakeOutcomeSummarizer implements ConversationOutcomeSummarizer {
+	readonly outcomes: ConversationOutcome[] = [];
+
+	constructor(private readonly summary: string) {}
+
+	async summarize(
+		business: typeof configuredBusiness,
+		conversation: Conversation,
+		outcome: ConversationOutcome,
+	): Promise<string> {
+		this.outcomes.push(outcome);
+		assert.equal(business.id, configuredBusiness.id);
+		assert.equal(conversation.businessId, configuredBusiness.id);
+		return this.summary;
+	}
+}
+
+class FailingOutcomeSummarizer implements ConversationOutcomeSummarizer {
+	async summarize(): Promise<string> {
+		throw new Error("Gemini is unavailable");
 	}
 }
 
@@ -153,6 +178,7 @@ function createDependencies(
 	ownerNotifier: OwnerNotifier = new FakeOwnerNotifier(),
 	contacts: Contacts = new FakeContacts(),
 	availability: CalendarAvailability = createAlwaysAvailable(),
+	outcomeSummarizer?: ConversationOutcomeSummarizer,
 ): ConversationOrchestratorDependencies {
 	return {
 		callLog,
@@ -180,6 +206,7 @@ function createDependencies(
 		},
 		ownerNotifier,
 		contacts,
+		...(outcomeSummarizer ? { outcomeSummarizer } : {}),
 	};
 }
 
@@ -223,6 +250,64 @@ test("writes one final Call Log entry when the conversation ends", async () => {
 	assert.equal(callLog.entries[0]?.conversationId, conversation.id);
 	assert.deepEqual(callLog.entries[0]?.intents, ["business_hours"]);
 	assert.equal(callLog.entries[0]?.outcome.status, "answered");
+	assert.match(
+		callLog.entries[0]?.outcome.summary ?? "",
+		/^Handled a business hours request\. Outcome:/,
+	);
+});
+
+test("uses the outcome summarizer for the final Call Log summary", async () => {
+	const callLog = new FakeCallLog();
+	const summarizer = new FakeOutcomeSummarizer(
+		"Milo's Bath appointment was booked successfully.",
+	);
+	const orchestrator = new ConversationOrchestrator(
+		configuredBusiness,
+		new FakeInterpreter({ intent: "book_appointment" }),
+		createDependencies(undefined, callLog, undefined, undefined, undefined, summarizer),
+	);
+	const conversation = createConversation();
+	conversation.recordIntent("book_appointment");
+	conversation.recordOutcome(
+		createConversationOutcome(
+			"completed",
+			"What name should I put on the appointment?",
+			"appointment-123",
+		),
+	);
+
+	await orchestrator.endConversation(conversation);
+
+	assert.equal(callLog.entries[0]?.outcome.status, "completed");
+	assert.equal(
+		callLog.entries[0]?.outcome.summary,
+		"Milo's Bath appointment was booked successfully.",
+	);
+	assert.match(
+		summarizer.outcomes[0]?.summary ?? "",
+		/^Handled an appointment booking request\. Outcome:/,
+	);
+});
+
+test("falls back to a deterministic Call Log summary when summarization fails", async () => {
+	const callLog = new FakeCallLog();
+	const orchestrator = new ConversationOrchestrator(
+		configuredBusiness,
+		new FakeInterpreter({ intent: "business_hours" }),
+		createDependencies(
+			undefined,
+			callLog,
+			undefined,
+			undefined,
+			undefined,
+			new FailingOutcomeSummarizer(),
+		),
+	);
+	const conversation = createConversation();
+
+	await orchestrator.handleMessage("What time do you open?", conversation);
+	await orchestrator.endConversation(conversation);
+
 	assert.match(
 		callLog.entries[0]?.outcome.summary ?? "",
 		/^Handled a business hours request\. Outcome:/,

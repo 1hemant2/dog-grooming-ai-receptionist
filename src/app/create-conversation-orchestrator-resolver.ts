@@ -57,6 +57,7 @@ export function createConversationOrchestratorResolver(): (
 				support,
 				ownerNotifier,
 				contacts,
+				outcomeSummarizer: geminiInterpreter,
 			}),
 		);
 	}

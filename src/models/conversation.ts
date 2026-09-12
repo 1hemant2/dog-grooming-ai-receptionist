@@ -51,6 +51,7 @@ export class Conversation {
 	private contactPersistedValue = false;
 	private alternativeSlotsOfferedValue = false;
 	private alternativeSlotsRejectedValue = false;
+	private readonly startedAtValue: Date;
 	private lastActivityAtValue: Date;
 	private statusValue: ConversationStatus = "active";
 
@@ -75,6 +76,7 @@ export class Conversation {
 		this.businessId = details.businessId;
 		this.callerPhoneValue = details.callerPhone;
 		this.contactPhoneValue = details.contactPhone;
+		this.startedAtValue = new Date(lastActivityAt);
 		this.lastActivityAtValue = new Date(lastActivityAt);
 	}
 
@@ -128,6 +130,10 @@ export class Conversation {
 
 	get lastActivityAt(): Date {
 		return new Date(this.lastActivityAtValue);
+	}
+
+	get startedAt(): Date {
+		return new Date(this.startedAtValue);
 	}
 
 	associateCallerPhone(callerPhone: string): void {

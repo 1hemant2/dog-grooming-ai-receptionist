@@ -36,6 +36,7 @@ export const EXT = {
 			headers: [
 				"businessId",
 				"conversationId",
+				"startedAt",
 				"endedAt",
 				"callerPhone",
 				"contactPhone",
@@ -61,6 +62,8 @@ export const APPLICATION_CONFIG = {
 	externalRequestTimeoutMs: 30_000,
 	interpreterHistoryMessageLimit: 6,
 	interpreterMaxOutputTokens: 300,
+	outcomeSummaryHistoryMessageLimit: 12,
+	outcomeSummaryMaxOutputTokens: 80,
 	conversationIdleTimeoutMs: 15 * 60 * 1_000,
 	conversationCleanupIntervalMs: 60 * 1_000,
 };

@@ -95,10 +95,19 @@ export interface CallLogEntry {
 	contactPhone?: string;
 	outcome: ConversationOutcome;
 	endedAt: string;
+	startedAt: string;
 }
 
 export interface CallLog {
 	append(entry: CallLogEntry): Promise<void>;
+}
+
+export interface ConversationOutcomeSummarizer {
+	summarize(
+		business: BusinessConfig,
+		conversation: Conversation,
+		outcome: ConversationOutcome,
+	): Promise<string>;
 }
 
 export interface MessageInterpreter {
