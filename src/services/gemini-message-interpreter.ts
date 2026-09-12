@@ -238,7 +238,11 @@ function buildPrompt(
 		"Use requestedDate as YYYY-MM-DD and requestedTime as 24-hour HH:mm in the business timezone.",
 		`For a ${business.phone.nationalNumberDigits}-digit national contact phone, add the +${business.phone.countryCallingCode} country code and return E.164 format.`,
 		"Set contactPhoneConfirmed only when the customer explicitly confirms that number is the contact number.",
-		"Set confirmation only when the customer explicitly confirms the proposed appointment change or booking.",
+		"A rejected phone number must have contactPhoneConfirmed set to false. Extract a replacement only if the customer supplies it. A request to change details is not booking confirmation, even if it begins with yes.",
+		"When the customer provides a name, preserve it and let the application acknowledge it before asking for the next required detail; do not require a yes/no confirmation for an ordinary name answer.",
+		"If the customer explicitly corrects a previously captured name while answering the next question, extract the corrected customerName and do not treat it as the pet name.",
+		"Set customerNameConfirmed only for legacy confirmation state. If spelling a name, join the stated letters without inventing letters.",
+		"Set confirmation only when the customer explicitly confirms the proposed appointment change or booking, including clear approvals such as yes, go ahead, do it, or book it.",
 		`Business: ${business.name} (${business.id})`,
 		`Timezone: ${business.timezone}`,
 		`Current local date: ${currentLocalDate}`,
@@ -332,6 +336,7 @@ function buildResponseSchema(business: BusinessConfig): Record<string, unknown> 
 					"Whether to continue normally, reject all offered appointment times, or require one exact requested time.",
 			},
 			customerName: { type: "string" },
+			customerNameConfirmed: { type: "boolean" },
 			contactPhone: {
 				type: "string",
 				description: "The customer-provided contact number normalized to E.164 format.",
@@ -482,6 +487,9 @@ function parseInterpretedMessage(text: string, business: BusinessConfig): Interp
 	}
 
 	const confirmation = readOptionalBoolean(value, "confirmation");
+	const customerNameConfirmed = readOptionalBoolean(value, "customerNameConfirmed");
+	if (customerNameConfirmed !== undefined)
+		interpreted.customerNameConfirmed = customerNameConfirmed;
 	if (confirmation !== undefined) interpreted.confirmation = confirmation;
 
 	const rabiesVaccinationStatus = readOptionalRabiesStatus(value.rabiesVaccinationStatus);

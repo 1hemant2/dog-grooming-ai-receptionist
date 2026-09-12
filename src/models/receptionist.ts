@@ -33,6 +33,7 @@ export type ExpectedCustomerField =
 	| "contact_phone"
 	| "contact_phone_confirmation"
 	| "customer_name"
+	| "customer_name_confirmation"
 	| "pet_name"
 	| "dog_weight"
 	| "rabies_status"
@@ -55,6 +56,7 @@ export interface InterpretedMessage {
 	intent: ReceptionistIntent;
 	conversationAction?: ConversationAction;
 	customerName?: string;
+	customerNameConfirmed?: boolean;
 	contactPhone?: string;
 	contactPhoneConfirmed?: boolean;
 	petName?: string;

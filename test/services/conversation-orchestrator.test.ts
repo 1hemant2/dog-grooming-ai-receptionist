@@ -518,6 +518,7 @@ test("does not write a booking before explicit confirmation", async () => {
 				throw new Error("Should not be called");
 			},
 		}),
+		() => new Date("2026-09-10T12:00:00Z"),
 	);
 	const conversation = createConversation();
 
@@ -617,6 +618,101 @@ test("offers alternate appointment times before asking for owner review", async 
 	assert.equal(conversation.ownerHandoffNotified, false);
 });
 
+test("explains when a requested service cannot fit within business hours", async () => {
+	let bookingCalled = false;
+	const availability: CalendarAvailability = {
+		async findAvailableSlots(): Promise<AvailabilityResult> {
+			return {
+				status: "available",
+				slots: [
+					new AppointmentSlot("2026-09-14T09:30:00.000Z", "2026-09-14T11:30:00.000Z"),
+					new AppointmentSlot("2026-09-15T03:30:00.000Z", "2026-09-15T05:30:00.000Z"),
+				],
+			};
+		},
+	};
+	const orchestrator = new ConversationOrchestrator(
+		configuredBusiness,
+		new FakeInterpreter({
+			intent: "book_appointment",
+			customerName: "Alex Morgan",
+			contactPhone: "+14155550100",
+			contactPhoneConfirmed: true,
+			petName: "Milo",
+			weightLb: 50,
+			rabiesVaccinationStatus: "current",
+			serviceId: "full-groom",
+			requestedDate: "2026-09-14",
+			requestedTime: "18:00",
+		}),
+		createDependencies(
+			{
+				async book(): Promise<Appointment> {
+					bookingCalled = true;
+					throw new Error("Should not be called");
+				},
+			},
+			undefined,
+			undefined,
+			undefined,
+			availability,
+		),
+		() => new Date("2026-09-12T12:00:00.000Z"),
+	);
+	const conversation = createConversation();
+
+	const result = await orchestrator.handleMessage("Book it for Monday at 6 PM", conversation);
+
+	assert.equal(result.outcome.status, "needs_information");
+	assert.match(result.reply, /outside our business hours/);
+	assert.match(result.reply, /open Monday through Saturday from 9:00 AM to 5:00 PM/);
+	assert.match(result.reply, /latest start for a Full Groom is 3:00 PM/);
+	assert.match(result.reply, /Monday, September 14 at 3:00 PM GMT\+5:30/);
+	assert.match(result.reply, /Tuesday, September 15 at 9:00 AM GMT\+5:30/);
+	assert.equal(conversation.expectedCustomerField, "requested_time");
+	assert.equal(bookingCalled, false);
+});
+
+test("explains closed dates before offering the next open-day slots", async () => {
+	const availability: CalendarAvailability = {
+		async findAvailableSlots(): Promise<AvailabilityResult> {
+			return {
+				status: "available",
+				slots: [
+					new AppointmentSlot("2026-09-14T03:30:00.000Z", "2026-09-14T04:30:00.000Z"),
+				],
+			};
+		},
+	};
+	const orchestrator = new ConversationOrchestrator(
+		configuredBusiness,
+		new FakeInterpreter({
+			intent: "book_appointment",
+			customerName: "Alex Morgan",
+			contactPhone: "+14155550100",
+			contactPhoneConfirmed: true,
+			petName: "Milo",
+			weightLb: 25,
+			rabiesVaccinationStatus: "current",
+			serviceId: "bath",
+			requestedDate: "2026-09-13",
+			requestedTime: "14:00",
+		}),
+		createDependencies(undefined, undefined, undefined, undefined, availability),
+		() => new Date("2026-09-12T12:00:00.000Z"),
+	);
+
+	const result = await orchestrator.handleMessage(
+		"Book it for Sunday at 2 PM",
+		createConversation(),
+	);
+
+	assert.equal(result.outcome.status, "needs_information");
+	assert.match(result.reply, /closed on Sunday/);
+	assert.match(result.reply, /open Monday through Saturday from 9:00 AM to 5:00 PM/);
+	assert.match(result.reply, /Monday, September 14 at 9:00 AM GMT\+5:30/);
+});
+
 test("notifies the owner when no alternate appointment time exists", async () => {
 	let bookingCalled = false;
 	const ownerNotifier = new FakeOwnerNotifier();
@@ -664,6 +760,7 @@ test("notifies the owner when no alternate appointment time exists", async () =>
 	assert.equal(response.outcome.status, "needs_human");
 	assert.match(response.reply, /sent your booking request to the owner/);
 	assert.equal(ownerNotifier.notifications.length, 1);
+	assert.match(ownerNotifier.notifications[0] ?? "", /🚨 APPOINTMENT BOOKING REVIEW/);
 	assert.match(ownerNotifier.notifications[0] ?? "", /3:00 PM GMT\+5:30/);
 	assert.match(ownerNotifier.notifications[0] ?? "", /No suitable appointment slots/);
 	assert.equal(bookingCalled, false);
@@ -686,8 +783,38 @@ test("asks for one missing booking detail at a time", async () => {
 	const result = await orchestrator.handleMessage("Book an appointment", conversation);
 
 	assert.equal(result.outcome.status, "needs_information");
-	assert.equal(result.reply, "And what is your dog's name?");
+	assert.match(result.reply, /I need your dog's name before I can book/);
 	assert.equal(conversation.expectedCustomerField, "pet_name");
+});
+
+test("asks concise name and phone questions before explaining repeated failures", async () => {
+	const phoneOrchestrator = new ConversationOrchestrator(
+		configuredBusiness,
+		new FakeInterpreter({ intent: "book_appointment" }),
+		createDependencies(),
+	);
+	const phoneResponse = await phoneOrchestrator.handleMessage(
+		"Book an appointment",
+		createConversation(),
+	);
+
+	assert.equal(phoneResponse.reply, "What phone number should we use for the appointment?");
+
+	const nameOrchestrator = new ConversationOrchestrator(
+		configuredBusiness,
+		new FakeInterpreter({
+			intent: "book_appointment",
+			contactPhone: "+14155550100",
+			contactPhoneConfirmed: true,
+		}),
+		createDependencies(),
+	);
+	const nameResponse = await nameOrchestrator.handleMessage(
+		"Book an appointment",
+		createConversation(),
+	);
+
+	assert.equal(nameResponse.reply, "What name should I put on the appointment?");
 });
 
 test("offers service choices using customer-friendly language", async () => {
@@ -709,7 +836,7 @@ test("offers service choices using customer-friendly language", async () => {
 
 	assert.equal(
 		result.reply,
-		"Which service would you like for Milo? We offer Bath, Bath and Trim, or Full Groom.",
+		"I haven't booked the appointment yet because a service is required. Which service would you like for Milo? We offer Bath, Bath and Trim, or Full Groom.",
 	);
 });
 
@@ -741,9 +868,12 @@ test("preserves booking facts across short follow-up answers", async () => {
 
 	assert.match(phoneResponse.reply, /best number/);
 	assert.equal(confirmationResponse.reply, "What name should I put on the appointment?");
-	assert.equal(nameResponse.reply, "And what is your dog's name?");
+	assert.doesNotMatch(confirmationResponse.reply, /can't book the appointment without/);
+	assert.match(nameResponse.reply, /I have noted your name as Hemant Kumar/);
+	assert.match(nameResponse.reply, /What is your dog's name/);
 	assert.equal(conversation.contactPhone, "+14155550100");
 	assert.equal(conversation.activeRequest?.customerName, "Hemant Kumar");
+	assert.equal(conversation.expectedCustomerField, "pet_name");
 });
 
 test("completes booking follow-ups locally after the initial Gemini interpretation", async () => {
@@ -792,7 +922,7 @@ test("completes booking follow-ups locally after the initial Gemini interpretati
 	await send("Yes, it is current");
 	await send("11th September");
 	const confirmationRequest = await send("11am");
-	const completed = await send("Yes");
+	const completed = await send("Go ahead");
 
 	assert.match(confirmationRequest.reply, /Friday, September 11 at 11:00 AM GMT\+5:30/);
 	assert.equal(completed.outcome.status, "completed");
@@ -885,9 +1015,11 @@ test("escalates oversized pricing once while preserving the selected service", a
 	assert.match(oversizedDogPrice.reply, /phone number/);
 	assert.match(phoneNumber.reply, /best number/);
 	assert.match(phoneConfirmation.reply, /What name should the owner use/);
-	assert.match(customerName.reply, /dog's name/);
+	assert.match(customerName.reply, /I have noted your name as Hemant Kumar/);
+	assert.match(customerName.reply, /What is your dog's name/);
 	assert.equal(ownerNotification.outcome.status, "needs_human");
 	assert.match(ownerNotification.reply, /sent the details to the owner/);
+	assert.match(ownerNotifier.notifications[0] ?? "", /⚠️ PRICING REVIEW REQUIRED/);
 	assert.match(ownerNotifier.notifications[0] ?? "", /Full Groom/);
 	assert.match(ownerNotifier.notifications[0] ?? "", /110 lb/);
 	assert.match(ownerNotifier.notifications[0] ?? "", /Hemant Kumar/);
@@ -1015,7 +1147,10 @@ test("resumes booking after answering a service details side question", async ()
 
 	assert.match(detailsResponse.reply, /complete haircut and style/);
 	assert.match(detailsResponse.reply, /what day works best for Tommy's Full Groom/);
-	assert.equal(resumedResponse.reply, "What day works best for Tommy's Full Groom?");
+	assert.equal(
+		resumedResponse.reply,
+		"I need an appointment date before I can book. What day works best for Tommy's Full Groom?",
+	);
 	assert.equal(conversation.activeRequest?.intent, "book_appointment");
 });
 
@@ -1115,6 +1250,241 @@ test("includes the current and proposed times in reschedule confirmation", async
 	);
 });
 
+test("rejected phone numbers are discarded and replacements require confirmation", async () => {
+	const interpreter = new SequenceInterpreter([
+		{ intent: "book_appointment", contactPhone: "+919534909390" },
+		{ intent: "book_appointment", contactPhoneConfirmed: false },
+		{ intent: "book_appointment", contactPhone: "+919876543210" },
+		{ intent: "book_appointment", contactPhoneConfirmed: true },
+	]);
+	const conversation = createConversation();
+	const orchestrator = new ConversationOrchestrator(
+		configuredBusiness,
+		interpreter,
+		createDependencies(),
+	);
+	await orchestrator.handleMessage("9534909390", conversation);
+	const rejected = await orchestrator.handleMessage("No, it's not correct", conversation);
+	assert.equal(rejected.reply, "Please say the correct ten-digit number.");
+	assert.equal(conversation.activeRequest?.contactPhone, undefined);
+	assert.equal(conversation.expectedCustomerField, "contact_phone");
+	await orchestrator.handleMessage("9876543210", conversation);
+	assert.equal(conversation.contactPhone, undefined);
+	assert.equal(conversation.expectedCustomerField, "contact_phone_confirmation");
+	await orchestrator.handleMessage("Yes", conversation);
+	assert.equal(conversation.contactPhone, "+919876543210");
+});
+
+test("name corrections update the captured name while collecting the pet name", async () => {
+	const interpreter = new GeminiMessageInterpreter(
+		{ apiKey: "test", model: "test" },
+		new OneResponseGeminiClient({
+			intent: "book_appointment",
+			contactPhone: "+919876543210",
+			contactPhoneConfirmed: true,
+		}),
+	);
+	const conversation = createConversation();
+	const orchestrator = new ConversationOrchestrator(
+		configuredBusiness,
+		interpreter,
+		createDependencies(),
+	);
+	await orchestrator.handleMessage("Book", conversation);
+	const heard = await orchestrator.handleMessage("Payment", conversation);
+	assert.match(heard.reply, /I have noted your name as Payment/);
+	assert.match(heard.reply, /What is your dog's name/);
+	const correction = await orchestrator.handleMessage(
+		"Actually, my name is H E M A N T",
+		conversation,
+	);
+	assert.match(correction.reply, /updated your name to HEMANT/);
+	assert.equal(conversation.activeRequest?.customerNameConfirmed, true);
+	assert.equal(conversation.expectedCustomerField, "pet_name");
+	assert.equal(conversation.activeRequest?.customerName, "HEMANT");
+});
+
+test("repeated incomplete numbers explain why booking and callback cannot proceed", async () => {
+	const interpreter = new SequenceInterpreter(
+		Array.from({ length: 4 }, () => ({ intent: "book_appointment" })),
+	);
+	const orchestrator = new ConversationOrchestrator(
+		configuredBusiness,
+		interpreter,
+		createDependencies(),
+	);
+	const conversation = createConversation();
+	await orchestrator.handleMessage("Book", conversation);
+	await orchestrator.handleMessage("9534", conversation);
+	await orchestrator.handleMessage("9534", conversation);
+	const result = await orchestrator.handleMessage("9534", conversation);
+	assert.match(result.reply, /nothing has been booked/);
+	assert.match(result.reply, /text chat/);
+	assert.equal(conversation.contactPhone, undefined);
+});
+
+test("changing booking details invalidates a yes and requires fresh approval", async () => {
+	let bookings = 0;
+	const details: InterpretedMessage = {
+		intent: "book_appointment",
+		customerName: "Hemant",
+		contactPhone: "+919876543210",
+		contactPhoneConfirmed: true,
+		petName: "Milo",
+		weightLb: 25,
+		rabiesVaccinationStatus: "current",
+		serviceId: "bath",
+		requestedDate: "2026-09-12",
+		requestedTime: "10:00",
+	};
+	const interpreter = new SequenceInterpreter([
+		details,
+		{ intent: "book_appointment", requestedTime: "11:00", confirmation: true },
+		{ intent: "book_appointment", confirmation: true },
+	]);
+	const orchestrator = new ConversationOrchestrator(
+		configuredBusiness,
+		interpreter,
+		createDependencies({
+			async book(request) {
+				bookings += 1;
+				return new Appointment({
+					id: "corrected",
+					businessId: request.businessId,
+					contactPhone: request.contactPhone,
+					petName: request.pet.name,
+					serviceId: request.serviceId,
+					startAt: request.startAt,
+					endAt: request.endAt,
+				});
+			},
+		}),
+		() => new Date("2026-09-10T12:00:00Z"),
+	);
+	const conversation = createConversation();
+	await orchestrator.handleMessage("Book a bath", conversation);
+	const correction = await orchestrator.handleMessage("Yes, but make it 11", conversation);
+	assert.equal(bookings, 0);
+	assert.match(correction.reply, /Should I book it/);
+	assert.match(correction.reply, /Hemant/);
+	assert.equal(conversation.activeRequest?.confirmation, undefined);
+	const result = await orchestrator.handleMessage("Yes", conversation);
+	assert.equal(result.outcome.appointmentId, "corrected");
+	assert.equal(bookings, 1);
+});
+
+test("declining a booking proposal does not create an appointment", async () => {
+	const conversation = createConversation();
+	conversation.updateActiveRequest({
+		intent: "book_appointment",
+		requestedDate: "2026-09-12",
+		requestedTime: "10:00",
+	});
+	conversation.recordOutcome(
+		createConversationOutcome("needs_information", "Awaiting approval."),
+	);
+	conversation.expectCustomerField("appointment_confirmation");
+	const orchestrator = new ConversationOrchestrator(
+		configuredBusiness,
+		new FakeInterpreter({ intent: "book_appointment", confirmation: false }),
+		createDependencies({
+			async book() {
+				throw new Error("Must not book");
+			},
+		}),
+	);
+	const result = await orchestrator.handleMessage("No", conversation);
+	assert.match(result.reply, /haven't booked/);
+	assert.equal(conversation.activeRequest?.requestedDate, undefined);
+	assert.equal(conversation.expectedCustomerField, "requested_date");
+});
+
+test("missing or unconfirmed required fields block booking even when the interpreter says yes", async (t) => {
+	const complete: InterpretedMessage = {
+		intent: "book_appointment",
+		customerName: "Hemant",
+		customerNameConfirmed: true,
+		contactPhone: "+919876543210",
+		contactPhoneConfirmed: true,
+		petName: "Milo",
+		weightLb: 25,
+		rabiesVaccinationStatus: "current",
+		serviceId: "bath",
+		requestedDate: "2026-09-12",
+		requestedTime: "10:00",
+		confirmation: true,
+	};
+	const cases: Array<{ field: keyof InterpretedMessage; expected: string }> = [
+		{ field: "contactPhone", expected: "contact_phone" },
+		{ field: "contactPhoneConfirmed", expected: "contact_phone_confirmation" },
+		{ field: "customerName", expected: "customer_name" },
+		{ field: "petName", expected: "pet_name" },
+		{ field: "weightLb", expected: "dog_weight" },
+		{ field: "rabiesVaccinationStatus", expected: "rabies_status" },
+		{ field: "serviceId", expected: "service" },
+		{ field: "requestedDate", expected: "requested_date" },
+		{ field: "requestedTime", expected: "requested_time" },
+		{ field: "confirmation", expected: "appointment_confirmation" },
+	];
+	for (const scenario of cases)
+		await t.test(scenario.field, async () => {
+			const incomplete = { ...complete };
+			delete incomplete[scenario.field];
+			let calls = 0;
+			const orchestrator = new ConversationOrchestrator(
+				configuredBusiness,
+				new FakeInterpreter(incomplete),
+				createDependencies({
+					async book() {
+						calls += 1;
+						throw new Error("Must not book");
+					},
+				}),
+				() => new Date("2026-09-10T12:00:00Z"),
+			);
+			const conversation = createConversation();
+			const result = await orchestrator.handleMessage("Yes, book it", conversation);
+			assert.equal(result.outcome.status, "needs_information");
+			assert.equal(result.outcome.appointmentId, undefined);
+			assert.equal(conversation.expectedCustomerField, scenario.expected);
+			assert.match(
+				result.reply,
+				/What (?:phone number|name)|before I can|isn't booked yet|haven't booked|can't book|need .* before|before booking|until we establish/i,
+			);
+			assert.equal(calls, 0);
+		});
+});
+
+test("booking service failure produces an explicit uncertain-booking response", async () => {
+	const details: InterpretedMessage = {
+		intent: "book_appointment",
+		customerName: "Hemant",
+		contactPhone: "+919876543210",
+		contactPhoneConfirmed: true,
+		petName: "Milo",
+		weightLb: 25,
+		rabiesVaccinationStatus: "current",
+		serviceId: "bath",
+		requestedDate: "2026-09-12",
+		requestedTime: "10:00",
+		confirmation: true,
+	};
+	const orchestrator = new ConversationOrchestrator(
+		configuredBusiness,
+		new FakeInterpreter(details),
+		createDependencies({
+			async book() {
+				throw new Error("Calendar unavailable");
+			},
+		}),
+		() => new Date("2026-09-10T12:00:00Z"),
+	);
+	const result = await orchestrator.handleMessage("Book it", createConversation());
+	assert.equal(result.outcome.status, "needs_human");
+	assert.match(result.reply, /couldn't confirm that your appointment was booked/);
+	assert.equal(result.outcome.appointmentId, undefined);
+});
+
 test("passes confirmed booking details to the booking service", async () => {
 	let receivedRequest: AppointmentBookingRequest | undefined;
 	const orchestrator = new ConversationOrchestrator(
@@ -1146,6 +1516,7 @@ test("passes confirmed booking details to the booking service", async () => {
 				});
 			},
 		}),
+		() => new Date("2026-09-10T12:00:00Z"),
 	);
 	const conversation = createConversation();
 
@@ -1182,6 +1553,7 @@ test("preserves appointment context when persistence fails after a Calendar writ
 				);
 			},
 		}),
+		() => new Date("2026-09-10T12:00:00Z"),
 	);
 
 	const result = await orchestrator.handleMessage("Book it", createConversation());

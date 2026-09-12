@@ -12,6 +12,7 @@ import {
 import {
 	addLocalDays,
 	formatLocalDateTime,
+	getDayName,
 	getLocalDate,
 	localDateTimeToDate,
 } from "./calendar-time.js";
@@ -90,6 +91,8 @@ interface AppointmentLookup {
 	reason?: string;
 	response?: ConversationResponse;
 }
+
+type RequestedScheduleIssue = "closed_day" | "outside_business_hours";
 
 export class ConversationOrchestrator implements ConversationMessageHandler {
 	constructor(
@@ -213,6 +216,8 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 		}
 
 		conversation.clearAlternativeSlotsRejected();
+		const detailResponse = this.handleDetailConfirmation(interpretedMessage, conversation);
+		if (detailResponse) return detailResponse;
 
 		const pricingHandoffResponse = await this.continuePricingHandoff(
 			interpretedMessage,
@@ -274,7 +279,9 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 
 			return this.finish(
 				conversation,
-				"I could not safely complete that request. The owner needs to review it.",
+				conversation.activeRequest?.intent === "book_appointment"
+					? "I couldn't confirm that your appointment was booked. The owner needs to review the request before you rely on a booking."
+					: "I could not safely complete that request. The owner needs to review it.",
 				createConversationOutcome(
 					"needs_human",
 					"The requested action could not be completed safely and requires owner review.",
@@ -539,6 +546,127 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 		return undefined;
 	}
 
+	private handleDetailConfirmation(
+		message: InterpretedMessage,
+		conversation: Conversation,
+	): ConversationResponse | undefined {
+		const expected = conversation.expectedCustomerField;
+		if (expected === "contact_phone_confirmation" && message.contactPhoneConfirmed === false) {
+			const previousNumber = conversation.activeRequest?.contactPhone;
+			conversation.rejectContactPhone();
+			const attempts = conversation.recordDetailFailure("contactPhone");
+			if (message.contactPhone && message.contactPhone !== previousNumber) {
+				conversation.updateActiveRequest({ ...message, contactPhoneConfirmed: false });
+				return this.ask(
+					conversation,
+					`I heard ${message.contactPhone}. Is this the correct contact number?`,
+					"contact_phone_confirmation",
+				);
+			}
+			return this.ask(
+				conversation,
+				attempts >= 3
+					? "I haven't been able to confirm your number, so nothing has been booked and I can't arrange a callback yet. You can retry by saying all ten digits, use the text chat, or end the conversation. What would you prefer?"
+					: "Please say the correct ten-digit number.",
+				"contact_phone",
+			);
+		}
+		if (
+			expected === "contact_phone" &&
+			!message.contactPhone &&
+			message.intent === conversation.activeRequest?.intent
+		) {
+			const attempts = conversation.recordDetailFailure("contactPhone");
+			return this.ask(
+				conversation,
+				attempts >= 3
+					? "I still don't have a complete contact number, so nothing has been booked and I can't arrange a callback. You can retry, enter it in the text chat, or end the conversation."
+					: "Please say all ten digits.",
+				"contact_phone",
+			);
+		}
+		if (expected === "customer_name_confirmation" && message.customerNameConfirmed === false) {
+			const previousName = conversation.activeRequest?.customerName;
+			conversation.rejectCustomerName();
+			const attempts = conversation.recordDetailFailure("customerName");
+			if (message.customerName && message.customerName !== previousName) {
+				return this.continueAfterCustomerName(message.customerName, message, conversation);
+			}
+			return this.ask(
+				conversation,
+				attempts >= 3
+					? "I haven't been able to confirm your name, so the booking is incomplete. You can spell it again, use the text chat, or end the conversation."
+					: "I need the correct customer name to complete the booking. Could you spell it for me?",
+				"customer_name",
+			);
+		}
+		if (expected === "customer_name" && message.customerName) {
+			return this.continueAfterCustomerName(message.customerName, message, conversation);
+		}
+		if (expected === "pet_name" && message.customerName) {
+			conversation.updateActiveRequest({ ...message, customerNameConfirmed: true });
+			return this.ask(
+				conversation,
+				`Thanks, I've updated your name to ${message.customerName}. What is your dog's name?`,
+				"pet_name",
+			);
+		}
+		if (
+			(expected === "customer_name" || expected === "customer_name_confirmation") &&
+			message.customerNameConfirmed !== true &&
+			message.intent === conversation.activeRequest?.intent
+		) {
+			const attempts = conversation.recordDetailFailure("customerName");
+			return this.ask(
+				conversation,
+				attempts >= 3
+					? "I haven't been able to confirm your name, so nothing has been booked. You can spell it again, use the text chat, or end the conversation."
+					: "Could you repeat or spell your name?",
+				"customer_name",
+			);
+		}
+		if (
+			expected === "appointment_confirmation" &&
+			conversation.activeRequest?.intent === "book_appointment" &&
+			message.confirmation === false &&
+			!message.requestedDate &&
+			!message.requestedTime &&
+			!message.serviceId &&
+			!message.customerName &&
+			!message.petName
+		) {
+			conversation.clearRequestedAppointmentSlot();
+			return this.ask(
+				conversation,
+				"I haven't booked that appointment. What date would you prefer instead?",
+				"requested_date",
+			);
+		}
+		return undefined;
+	}
+
+	private continueAfterCustomerName(
+		customerName: string,
+		message: InterpretedMessage,
+		conversation: Conversation,
+	): ConversationResponse {
+		conversation.updateActiveRequest({ ...message, customerNameConfirmed: true });
+
+		if (conversation.activeRequest?.intent === "complaint") {
+			return this.ask(
+				conversation,
+				`I have noted your name as ${customerName}. What part of the experience would you like to report?`,
+				"complaint_category",
+			);
+		}
+
+		return this.ask(
+			conversation,
+			`I have noted your name as ${customerName}. What is your dog's name?`,
+			"pet_name",
+		);
+	}
+
 	private async routeMessage(
 		interpretedMessage: InterpretedMessage,
 		message: string,
@@ -709,14 +837,17 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 		const pricingRequest = this.buildPricingRequest(interpretedMessage, activeRequest);
 		const service = this.findService(pricingRequest);
 		const notification = [
-			"Pricing review required for an oversized dog.",
+			"⚠️ PRICING REVIEW REQUIRED",
+			"",
 			`Business: ${this.business.name}`,
 			`Conversation: ${conversation.id}`,
+			"",
 			`Customer: ${pricingRequest.customerName ?? "Not provided"}`,
 			`Contact phone: ${conversation.contactPhone ?? pricingRequest.contactPhone ?? "Not provided"}`,
 			`Pet: ${pricingRequest.petName ?? "Not provided"}`,
 			`Service: ${service?.name ?? pricingRequest.serviceName ?? pricingRequest.serviceId ?? "Not provided"}`,
 			`Weight: ${pricingRequest.weightLb !== undefined ? `${pricingRequest.weightLb} lb` : "Not provided"}`,
+			"",
 			`Reason: ${outcome.summary}`,
 		].join("\n");
 
@@ -809,7 +940,7 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 			if (interpretedMessage.contactPhone) {
 				return this.ask(
 					conversation,
-					`I have ${interpretedMessage.contactPhone}. Is that the best number to use for the appointment?`,
+					`The appointment isn't booked yet. I have ${interpretedMessage.contactPhone}. Is that the best number to use for the appointment?`,
 					"contact_phone_confirmation",
 				);
 			}
@@ -821,7 +952,7 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 			);
 		}
 
-		if (!interpretedMessage.customerName) {
+		if (!interpretedMessage.customerName?.trim()) {
 			return this.ask(
 				conversation,
 				"What name should I put on the appointment?",
@@ -829,14 +960,29 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 			);
 		}
 
-		if (!interpretedMessage.petName) {
-			return this.ask(conversation, "And what is your dog's name?", "pet_name");
-		}
-
-		if (interpretedMessage.weightLb === undefined) {
+		if (interpretedMessage.customerNameConfirmed === false) {
 			return this.ask(
 				conversation,
-				`About how much does ${interpretedMessage.petName} weigh in pounds?`,
+				`I haven't booked the appointment yet. I heard ${interpretedMessage.customerName}. Is that your correct name?`,
+				"customer_name_confirmation",
+			);
+		}
+		if (!interpretedMessage.petName?.trim()) {
+			return this.ask(
+				conversation,
+				"I need your dog's name before I can book. And what is your dog's name?",
+				"pet_name",
+			);
+		}
+
+		if (
+			interpretedMessage.weightLb === undefined ||
+			!Number.isFinite(interpretedMessage.weightLb) ||
+			interpretedMessage.weightLb <= 0
+		) {
+			return this.ask(
+				conversation,
+				`I need ${interpretedMessage.petName}'s weight to check the grooming duration before booking. About how much does ${interpretedMessage.petName} weigh in pounds?`,
 				"dog_weight",
 			);
 		}
@@ -844,7 +990,7 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 		if (interpretedMessage.rabiesVaccinationStatus === undefined) {
 			return this.ask(
 				conversation,
-				`Is ${interpretedMessage.petName}'s rabies vaccination up to date?`,
+				`I can't book until we establish ${interpretedMessage.petName}'s rabies vaccination status. Is ${interpretedMessage.petName}'s rabies vaccination up to date?`,
 				"rabies_status",
 			);
 		}
@@ -866,7 +1012,7 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 		if (!service) {
 			return this.ask(
 				conversation,
-				`Which service would you like for ${pet.name}? We offer ${formatChoices(
+				`I haven't booked the appointment yet because a service is required. Which service would you like for ${pet.name}? We offer ${formatChoices(
 					this.business.services.map((availableService) => availableService.name),
 				)}.`,
 				"service",
@@ -876,13 +1022,17 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 		if (!interpretedMessage.requestedDate) {
 			return this.ask(
 				conversation,
-				`What day works best for ${pet.name}'s ${service.name}?`,
+				`I need an appointment date before I can book. What day works best for ${pet.name}'s ${service.name}?`,
 				"requested_date",
 			);
 		}
 
 		if (!interpretedMessage.requestedTime) {
-			return this.ask(conversation, "What time would you prefer that day?", "requested_time");
+			return this.ask(
+				conversation,
+				"I need an appointment time before I can book. What time would you prefer that day?",
+				"requested_time",
+			);
 		}
 
 		const slot = this.createRequestedSlot(
@@ -890,6 +1040,7 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 			interpretedMessage.requestedTime,
 			getAppointmentDuration(this.business, service.durationMinutes, pet.weightLb),
 		);
+		const requestedScheduleIssue = getRequestedScheduleIssue(this.business, slot);
 		let availability: AvailabilityResult;
 
 		try {
@@ -916,6 +1067,7 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 			pet,
 			slot,
 			availability,
+			requestedScheduleIssue,
 		);
 		if (availabilityResponse) return availabilityResponse;
 
@@ -923,7 +1075,7 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 			const appointmentTime = formatLocalDateTime(slot.startAt, this.business.timezone);
 			return this.ask(
 				conversation,
-				`Just to confirm: ${service.name} for ${pet.name} on ${appointmentTime}. Should I book it?`,
+				`The appointment isn't booked yet. Just to confirm: ${service.name} for ${pet.name}, under ${interpretedMessage.customerName}, contact number ${contactPhone}, on ${appointmentTime}. Should I book it?`,
 				"appointment_confirmation",
 			);
 		}
@@ -976,6 +1128,7 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 				pet,
 				slot,
 				latestAvailability,
+				requestedScheduleIssue,
 			);
 			if (conflictResponse) return conflictResponse;
 
@@ -1037,6 +1190,7 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 		pet: PetDetails,
 		requestedSlot: AppointmentSlot,
 		availability: AvailabilityResult,
+		requestedScheduleIssue: RequestedScheduleIssue | undefined,
 	): Promise<ConversationResponse | undefined> {
 		if (availability.status === "available") {
 			const requestedSlotIsAvailable = availability.slots.some(
@@ -1056,7 +1210,16 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 					serviceName,
 					pet,
 					requestedSlot,
-					"The requested time is unavailable, and the customer said no alternative time will work.",
+					requestedScheduleIssue
+						? this.describeScheduleIssue(
+								requestedScheduleIssue,
+								requestedSlot,
+								serviceName,
+							)
+						: "The requested time is unavailable, and the customer said no alternative time will work.",
+					requestedScheduleIssue
+						? `${this.describeScheduleIssue(requestedScheduleIssue, requestedSlot, serviceName)} I understand that is the only time that works. I've sent your request to the owner, and they'll call you back to see if they can help.`
+						: undefined,
 				);
 			}
 
@@ -1070,6 +1233,7 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 						pet.name,
 						requestedSlot,
 						alternatives,
+						requestedScheduleIssue,
 					),
 					"requested_time",
 				);
@@ -1084,7 +1248,12 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 				serviceName,
 				pet,
 				requestedSlot,
-				"The requested time is unavailable, and the customer said no alternative time will work.",
+				requestedScheduleIssue
+					? this.describeScheduleIssue(requestedScheduleIssue, requestedSlot, serviceName)
+					: "The requested time is unavailable, and the customer said no alternative time will work.",
+				requestedScheduleIssue
+					? `${this.describeScheduleIssue(requestedScheduleIssue, requestedSlot, serviceName)} I understand that is the only time that works. I've sent your request to the owner, and they'll call you back to see if they can help.`
+					: undefined,
 			);
 		}
 
@@ -1099,7 +1268,45 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 			pet,
 			requestedSlot,
 			reason,
+			requestedScheduleIssue
+				? `${this.describeScheduleIssue(requestedScheduleIssue, requestedSlot, serviceName)} I couldn't find a suitable alternative in the current search window, so I've sent your request to the owner to review.`
+				: undefined,
 		);
+	}
+
+	private describeScheduleIssue(
+		issue: RequestedScheduleIssue,
+		requestedSlot: AppointmentSlot,
+		serviceName: string,
+	): string {
+		const requestedStart = new Date(requestedSlot.startAt);
+		const requestedDate = getLocalDate(requestedStart, this.business.timezone);
+		const requestedDay = getDayName(requestedStart, this.business.timezone);
+		const businessHours = `We're open ${formatOpenDays(this.business.closedDays)} from ${formatConfiguredTime(this.business.openingTime)} to ${formatConfiguredTime(this.business.closingTime)}.`;
+
+		if (issue === "closed_day") {
+			return `We're closed on ${requestedDay}. ${businessHours}`;
+		}
+
+		const openingAt = localDateTimeToDate(
+			requestedDate,
+			this.business.openingTime,
+			this.business.timezone,
+		);
+		const closingAt = localDateTimeToDate(
+			requestedDate,
+			this.business.closingTime,
+			this.business.timezone,
+		);
+
+		if (requestedStart.getTime() < openingAt.getTime()) {
+			return `${formatLocalDateTime(requestedSlot.startAt, this.business.timezone)} is before we open. ${businessHours}`;
+		}
+
+		const durationMinutes =
+			(Date.parse(requestedSlot.endAt) - Date.parse(requestedSlot.startAt)) / 60_000;
+		const latestStartAt = new Date(closingAt.getTime() - durationMinutes * 60_000);
+		return `${formatLocalDateTime(requestedSlot.startAt, this.business.timezone)} is outside our business hours. ${businessHours} The latest start for a ${serviceName} is ${formatLocalTime(latestStartAt, this.business.timezone)}.`;
 	}
 
 	private getAlternativeSlots(
@@ -1131,11 +1338,15 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 		petName: string,
 		requestedSlot: AppointmentSlot,
 		alternatives: readonly AppointmentSlot[],
+		requestedScheduleIssue: RequestedScheduleIssue | undefined,
 	): string {
 		const formattedSlots = alternatives.map((slot) =>
 			formatLocalDateTime(slot.startAt, this.business.timezone),
 		);
-		return `${formatLocalDateTime(requestedSlot.startAt, this.business.timezone)} is not available for ${petName}'s ${serviceName}. I can offer ${formatChoices(formattedSlots)} instead. Which time would you prefer?`;
+		const explanation = requestedScheduleIssue
+			? this.describeScheduleIssue(requestedScheduleIssue, requestedSlot, serviceName)
+			: `${formatLocalDateTime(requestedSlot.startAt, this.business.timezone)} is not available for ${petName}'s ${serviceName}.`;
+		return `${explanation} I can offer ${formatChoices(formattedSlots)} instead. Which time would you prefer?`;
 	}
 
 	private async escalateBookingReview(
@@ -1145,21 +1356,25 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 		pet: PetDetails,
 		requestedSlot: AppointmentSlot,
 		reason: string,
+		customerReply?: string,
 	): Promise<ConversationResponse> {
 		const outcome = createConversationOutcome(
 			"needs_human",
 			`Booking needs owner review. ${reason}`,
 		);
 		const notification = [
-			"Appointment booking review required.",
+			"🚨 APPOINTMENT BOOKING REVIEW",
+			"",
 			`Business: ${this.business.name}`,
 			`Conversation: ${conversation.id}`,
+			"",
 			`Customer: ${interpretedMessage.customerName ?? "Not provided"}`,
 			`Contact phone: ${conversation.contactPhone ?? interpretedMessage.contactPhone ?? "Not provided"}`,
 			`Pet: ${pet.name}`,
 			`Weight: ${pet.weightLb} lb`,
 			`Service: ${serviceName}`,
 			`Requested time: ${formatLocalDateTime(requestedSlot.startAt, this.business.timezone)}`,
+			"",
 			`Reason: ${reason}`,
 		].join("\n");
 
@@ -1198,7 +1413,8 @@ export class ConversationOrchestrator implements ConversationMessageHandler {
 
 		return this.finish(
 			conversation,
-			"I understand that the available times don’t work for you. I’ve sent your booking request to the owner, and they’ll call you back to see if they can help.",
+			customerReply ??
+				"I understand that the available times don’t work for you. I’ve sent your booking request to the owner, and they’ll call you back to see if they can help.",
 			outcome,
 		);
 	}
@@ -1789,4 +2005,66 @@ function formatChoices(choices: readonly string[]): string {
 	if (choices.length === 2) return `${choices[0]} or ${choices[1]}`;
 
 	return `${choices.slice(0, -1).join(", ")}, or ${choices.at(-1)}`;
+}
+
+const WEEK_DAYS = [
+	"Monday",
+	"Tuesday",
+	"Wednesday",
+	"Thursday",
+	"Friday",
+	"Saturday",
+	"Sunday",
+] as const;
+
+function getRequestedScheduleIssue(
+	business: BusinessConfig,
+	requestedSlot: AppointmentSlot,
+): RequestedScheduleIssue | undefined {
+	const requestedStart = new Date(requestedSlot.startAt);
+	const requestedEnd = new Date(requestedSlot.endAt);
+	const requestedDate = getLocalDate(requestedStart, business.timezone);
+	const requestedDay = getDayName(requestedStart, business.timezone);
+
+	if (business.closedDays.includes(requestedDay)) return "closed_day";
+
+	const openingAt = localDateTimeToDate(requestedDate, business.openingTime, business.timezone);
+	const closingAt = localDateTimeToDate(requestedDate, business.closingTime, business.timezone);
+
+	return requestedStart.getTime() < openingAt.getTime() ||
+		requestedEnd.getTime() > closingAt.getTime()
+		? "outside_business_hours"
+		: undefined;
+}
+
+function formatOpenDays(closedDays: readonly string[]): string {
+	const openDays = WEEK_DAYS.filter((day) => !closedDays.includes(day));
+
+	if (openDays.length === 0) return "the configured open days";
+	if (openDays.length === WEEK_DAYS.length) return "every day";
+	if (openDays.join(",") === WEEK_DAYS.slice(0, 6).join(",")) {
+		return "Monday through Saturday";
+	}
+
+	return formatChoices(openDays);
+}
+
+function formatConfiguredTime(value: string): string {
+	const [hourText, minuteText] = value.split(":");
+	const hour = Number(hourText);
+	const minute = Number(minuteText);
+
+	if (!Number.isInteger(hour) || !Number.isInteger(minute)) return value;
+
+	const displayHour = hour % 12 || 12;
+	const suffix = hour >= 12 ? "PM" : "AM";
+	return `${displayHour}:${String(minute).padStart(2, "0")} ${suffix}`;
+}
+
+function formatLocalTime(date: Date, timeZone: string): string {
+	return new Intl.DateTimeFormat("en-US", {
+		timeZone,
+		hour: "numeric",
+		minute: "2-digit",
+	}).format(date);
 }

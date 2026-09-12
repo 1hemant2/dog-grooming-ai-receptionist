@@ -227,6 +227,23 @@ test("reads an expected customer name locally without calling Gemini", async () 
 	assert.equal(client.callCount, 0);
 });
 
+test("reads natural booking approval locally without calling Gemini", async () => {
+	const client = new FakeGeminiClient();
+	const interpreter = new GeminiMessageInterpreter(
+		{ apiKey: "test-key", model: "test-model" },
+		client,
+	);
+
+	const result = await interpreter.interpret(
+		"Go ahead and book it",
+		configuredBusiness,
+		createConversationAwaiting("appointment_confirmation"),
+	);
+
+	assert.equal(result.confirmation, true);
+	assert.equal(client.callCount, 0);
+});
+
 test("resolves an expected natural date to the next occurrence locally", async () => {
 	const client = new FakeGeminiClient();
 	const interpreter = new GeminiMessageInterpreter(

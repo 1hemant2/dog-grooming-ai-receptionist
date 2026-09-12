@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { playVoiceReply } from "../../src/livekit/voice-reply.js";
+import { LiveKitVoiceRuntime } from "../../src/livekit/voice-runtime.js";
+import type { VoiceTurnResult } from "../../src/models/voice-call.js";
 import { InMemoryConversationStore } from "../../src/models/conversation.js";
 import { createConversationOutcome } from "../../src/models/receptionist.js";
 import { isConversationEndRequest } from "../../src/services/customer-message-parser.js";
@@ -28,6 +30,53 @@ test("recognizes explicit and polite end-call requests without treating a reject
 	]) {
 		assert.equal(isConversationEndRequest(message), false, message);
 	}
+});
+
+test("disconnect during booking finalizes the successful appointment outcome", async () => {
+	const store = new InMemoryConversationStore();
+	let releaseBooking!: () => void;
+	const pendingBooking = new Promise<void>((resolve) => {
+		releaseBooking = resolve;
+	});
+	let finalizedAppointment: string | undefined;
+	let finalizations = 0;
+	const adapter = new LiveKitConversationAdapter(store, () => ({
+		async handleMessage(_message, conversation) {
+			await pendingBooking;
+			const outcome = createConversationOutcome(
+				"completed",
+				"Appointment booked.",
+				"appointment-after-disconnect",
+			);
+			conversation.recordOutcome(outcome);
+			return { reply: "Booked", outcome };
+		},
+		async endConversation(conversation) {
+			finalizations += 1;
+			assert.equal(conversation.outcome?.status, "completed");
+			finalizedAppointment = conversation.outcome?.appointmentId;
+		},
+	}));
+	let transcript!: (message: string) => Promise<VoiceTurnResult>;
+	const runtime = new LiveKitVoiceRuntime(adapter, async (_call, onTranscript) => {
+		transcript = onTranscript;
+		return { async close() {} };
+	});
+	await runtime.startCall({
+		businessId: "maple-street-dog-grooming",
+		conversationId: "booking-disconnect",
+		roomName: "booking-disconnect",
+		participantIdentity: "customer",
+	});
+	const turn = transcript("Yes, book it");
+	await Promise.resolve();
+	const shutdown = runtime.close();
+	assert.equal(finalizations, 0);
+	releaseBooking();
+	await turn;
+	await shutdown;
+	assert.equal(finalizedAppointment, "appointment-after-disconnect");
+	assert.equal(finalizations, 1);
 });
 
 test("hangs up only after farewell playback finishes", async () => {

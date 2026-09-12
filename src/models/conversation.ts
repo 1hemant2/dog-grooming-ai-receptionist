@@ -54,6 +54,33 @@ export class Conversation {
 	private readonly startedAtValue: Date;
 	private lastActivityAtValue: Date;
 	private statusValue: ConversationStatus = "active";
+	private readonly detailFailures = new Map<string, number>();
+
+	recordDetailFailure(field: "contactPhone" | "customerName"): number {
+		this.requireActive("retry a detail in");
+		const attempts = (this.detailFailures.get(field) ?? 0) + 1;
+		this.detailFailures.set(field, attempts);
+		return attempts;
+	}
+
+	rejectContactPhone(): void {
+		this.requireActive("reject a phone number in");
+		this.contactPhoneValue = undefined;
+		if (this.activeRequestValue) {
+			delete this.activeRequestValue.contactPhone;
+			delete this.activeRequestValue.contactPhoneConfirmed;
+			delete this.activeRequestValue.confirmation;
+		}
+	}
+
+	rejectCustomerName(): void {
+		this.requireActive("reject a name in");
+		if (this.activeRequestValue) {
+			delete this.activeRequestValue.customerName;
+			delete this.activeRequestValue.customerNameConfirmed;
+			delete this.activeRequestValue.confirmation;
+		}
+	}
 
 	constructor(details: ConversationDetails, lastActivityAt: Date = new Date()) {
 		if (details.id.trim().length === 0 || details.businessId.trim().length === 0) {
@@ -158,6 +185,7 @@ export class Conversation {
 		}
 
 		this.contactPhoneValue = contactPhone;
+		this.detailFailures.delete("contactPhone");
 	}
 
 	addMessage(author: ConversationMessage["author"], text: string): void {
@@ -183,6 +211,7 @@ export class Conversation {
 		this.requireActive("update the active request for");
 		const requestFacts = { ...interpretedMessage };
 		delete requestFacts.conversationAction;
+		if (requestFacts.customerNameConfirmed === true) this.detailFailures.delete("customerName");
 
 		const previousRequest = this.activeRequestValue;
 		const continuesPreviousRequest =
@@ -194,6 +223,40 @@ export class Conversation {
 				this.outcomeValue?.status === "needs_information");
 
 		if (previousRequest && continuesPreviousRequest) {
+			const bookingFields = [
+				"customerName",
+				"contactPhone",
+				"petName",
+				"weightLb",
+				"rabiesVaccinationStatus",
+				"healthConcerns",
+				"behaviorConcerns",
+				"safetyConcern",
+				"serviceId",
+				"serviceName",
+				"requestedDate",
+				"requestedTime",
+				"appointmentId",
+			] as const;
+			const detailsChanged = bookingFields.some(
+				(field) =>
+					requestFacts[field] !== undefined &&
+					requestFacts[field] !== previousRequest[field],
+			);
+			if (
+				requestFacts.contactPhone &&
+				requestFacts.contactPhone !== previousRequest.contactPhone
+			) {
+				this.contactPhoneValue = undefined;
+				previousRequest.contactPhoneConfirmed = false;
+				requestFacts.contactPhoneConfirmed = false;
+			}
+			if (
+				requestFacts.customerName &&
+				requestFacts.customerName !== previousRequest.customerName
+			) {
+				previousRequest.customerNameConfirmed = false;
+			}
 			this.activeRequestValue = {
 				...previousRequest,
 				...requestFacts,
@@ -202,6 +265,7 @@ export class Conversation {
 						? previousRequest.intent
 						: requestFacts.intent,
 			};
+			if (detailsChanged) delete this.activeRequestValue.confirmation;
 		} else {
 			this.activeRequestValue = requestFacts;
 		}
@@ -215,6 +279,7 @@ export class Conversation {
 		this.activeRequestValue = undefined;
 		this.expectedCustomerFieldValue = undefined;
 		this.outcomeValue = undefined;
+		this.detailFailures.clear();
 		this.alternativeSlotsOfferedValue = false;
 		this.alternativeSlotsRejectedValue = false;
 	}

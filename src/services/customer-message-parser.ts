@@ -78,16 +78,30 @@ export function interpretExpectedAnswer(
 			return contactPhone ? { intent: activeIntent, contactPhone } : undefined;
 		}
 		case "contact_phone_confirmation": {
+			const contactPhone = extractContactPhone(message, business);
+			if (contactPhone)
+				return { intent: activeIntent, contactPhone, contactPhoneConfirmed: false };
 			const confirmed = extractConfirmation(message);
 			return confirmed === undefined
 				? undefined
 				: { intent: activeIntent, contactPhoneConfirmed: confirmed };
+		}
+		case "customer_name_confirmation": {
+			const confirmed = extractConfirmation(message);
+			return confirmed === undefined
+				? undefined
+				: { intent: activeIntent, customerNameConfirmed: confirmed };
 		}
 		case "customer_name": {
 			const customerName = extractName(message, ["my name is", "i am", "i'm"]);
 			return customerName ? { intent: activeIntent, customerName } : undefined;
 		}
 		case "pet_name": {
+			const correctedCustomerName = extractCorrectedCustomerName(message);
+			if (correctedCustomerName) {
+				return { intent: activeIntent, customerName: correctedCustomerName };
+			}
+
 			const petName = extractName(message, [
 				"my dog's name is",
 				"my dog is",
@@ -143,7 +157,7 @@ export function interpretExpectedAnswer(
 			};
 		}
 		case "appointment_confirmation": {
-			const confirmation = extractConfirmation(message);
+			const confirmation = extractConfirmation(message, true);
 			return confirmation === undefined ? undefined : { intent: activeIntent, confirmation };
 		}
 		case "minutes_late": {
@@ -248,6 +262,10 @@ function extractName(message: string, prefixes: readonly string[]): string | und
 			break;
 		}
 	}
+	if (/^(?:spell|spelled|spelling)(?: it)? /i.test(name)) {
+		name = name.replace(/^(?:spell|spelled|spelling)(?: it)? /i, "");
+	}
+	if (/^[a-z](?:[ -][a-z])+$/i.test(name)) name = name.replace(/[ -]/g, "");
 
 	if (!/^[A-Za-z][A-Za-z' -]{0,79}$/.test(name)) {
 		return undefined;
@@ -259,6 +277,21 @@ function extractName(message: string, prefixes: readonly string[]): string | und
 	}
 
 	return name;
+}
+
+function extractCorrectedCustomerName(message: string): string | undefined {
+	if (
+		!/^(?:actually|no|sorry|correction|correct(?:ion)?|i mean|that's wrong|that is wrong)\b/i.test(
+			message.trim(),
+		)
+	) {
+		return undefined;
+	}
+
+	const match = message.match(
+		/\b(?:my name is|the correct name is|i am|i'm|it is|it's)\s+(.+)$/i,
+	);
+	return match?.[1] ? extractName(match[1], []) : undefined;
 }
 
 function extractNumber(message: string): number | undefined {
@@ -430,18 +463,56 @@ function formatTime(hour: number, minute: number): string {
 	return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
-function extractConfirmation(message: string): boolean | undefined {
+function extractConfirmation(message: string, allowBookingActions = false): boolean | undefined {
 	const normalizedMessage = normalizeWords(message);
 
+	const basicConfirmations = [
+		"yes",
+		"yes please",
+		"correct",
+		"confirmed",
+		"confirm",
+		"okay",
+		"ok",
+	];
+	const bookingConfirmations = [
+		"go ahead",
+		"do it",
+		"book it",
+		"please book it",
+		"yes book it",
+		"yes go ahead",
+		"go ahead and book it",
+		"yes go ahead and book it",
+		"proceed",
+		"schedule it",
+		"that works",
+		"sounds good",
+	];
+
 	if (
-		["yes", "yes please", "correct", "confirmed", "confirm", "okay", "ok"].includes(
-			normalizedMessage,
-		)
+		basicConfirmations.includes(normalizedMessage) ||
+		(allowBookingActions && bookingConfirmations.includes(normalizedMessage))
 	) {
 		return true;
 	}
 
-	if (["no", "no thanks", "incorrect", "do not", "dont", "cancel"].includes(normalizedMessage)) {
+	if (
+		[
+			"no",
+			"no thanks",
+			"incorrect",
+			"do not",
+			"dont",
+			"cancel",
+			"no it s not correct",
+			"no it is not correct",
+			"that s wrong",
+			"that is wrong",
+			"not correct",
+			"no that s wrong",
+		].includes(normalizedMessage)
+	) {
 		return false;
 	}
 

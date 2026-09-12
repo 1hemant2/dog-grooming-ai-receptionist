@@ -33,6 +33,7 @@ Build a text-based AI receptionist for Maple Street Dog Grooming. It should hand
 - After a call ends and its required Call Log data is saved, remove its in-memory conversation state. Do not remove the state if it must be preserved for a failed write or human handoff.
 - Successful responses contain `conversationId`, `status`, and `reply`. They also contain `appointmentId` when an appointment was created or changed, including a partial failure that requires human review.
 - Vapi responses may also contain `endCall: true` when the customer explicitly asks to end the call. The Vapi assistant speaks the returned closing reply and invokes its end-call capability after that reply.
+- Model prompts and internal orchestration instructions are backend-only. Customer-facing replies come from the conversation handler and must never expose prompt text or internal instructions.
 
 ## Phase 1 demonstration UI
 
@@ -82,7 +83,7 @@ Build a text-based AI receptionist for Maple Street Dog Grooming. It should hand
 - Dogs from 71 to 100 lb add 30 minutes to the service duration. Dogs over 100 lb require human review.
 - Aggression, severe anxiety, active illness, or injury requires human review.
 - Phase 1 handoff records `needs_human` in the Call Log and tells the customer that the owner will call back.
-- Phase 1 owner notifications use the Telegram Bot API. The bot token and target chat ID come from application configuration and are never hard-coded or accepted from customer messages.
+- Phase 1 owner notifications use the Telegram Bot API. The bot token and target chat ID come from application configuration and are never hard-coded or accepted from customer messages. Handoff notifications use a scannable plain-text header, spacing, and labeled fields so the owner can quickly identify the customer, request, and reason.
 - A conversation that has no new message for the configured idle timeout is finalized automatically. The default Phase 1 idle timeout is 15 minutes.
 - Availability searches cover the next seven days. If no suitable slot exists, ask for another date range or create a callback request.
 
@@ -129,6 +130,16 @@ Gemini receives only a bounded recent-history window plus the current active int
 
 ## Defined conversation flows
 
+### Corrections and booking recovery
+
+- A rejected phone number is discarded before requesting a replacement. A replacement number must be read back and confirmed before booking or arranging a callback.
+- When a customer provides a name, acknowledge the captured value and immediately ask for the next required detail. If the customer explicitly corrects that name while answering the next question, update the stored value, acknowledge the correction, and continue collecting details. Keep explicit read-back confirmation for phone numbers because they are used for booking and callbacks.
+- Changing customer, pet, service, safety, date, time, or appointment identity invalidates earlier booking confirmation. Recheck availability and request fresh approval, including when a correction begins with “yes, but”. The final booking summary includes the customer name and confirmed contact number.
+- Declining the booking proposal must state that the proposal was not booked and invite a new date.
+- After three unsuccessful attempts to capture or confirm a required name or contact number, explain that the booking is incomplete and offer retry, text chat, or ending the conversation. Do not claim a callback is arranged without a confirmed number.
+- If a customer disconnects while booking is processing, wait for that operation and finalize with its actual outcome and appointment identifier. Do not overwrite a successful booking with a disconnect failure.
+- Ask concise questions while collecting a missing or unconfirmed booking detail. If the customer cannot provide a required name or contact number after repeated attempts, explain that the appointment is incomplete and offer recovery options. The final proposal must state that it is not booked yet. Announce booking success only after the booking service returns a created appointment. A failed or uncertain Calendar write must not be described as successful or as an arranged callback.
+
 ### Service enquiry and booking
 
 1. Check whether the shop offers every requested service.
@@ -138,10 +149,11 @@ Gemini receives only a bounded recent-history window plus the current active int
 5. Collect the pet's name, breed or mix, size, and any health or behavior information needed for safe scheduling.
 6. Check the requested appointment time only after the service and required duration are known.
 7. If the time is available, collect the customer's name and confirmed `contactPhone`, confirm the details, and book it.
-8. If the time is unavailable, offer the nearest available time on the same day, then the next day. Prefer times closest to the customer's requested time.
-9. If none of the offered alternatives work, ask for another date or time and search again. If the customer says the original unavailable time is their only option, stop repeating alternatives and send the request to the owner for review.
-10. If no suitable time exists in the search window, collect the confirmed callback details, notify the owner, and tell the customer that the owner will call back.
-11. Book only after the customer accepts an offered time.
+8. If the requested date is closed or the requested time cannot fit within the configured business hours for the full service duration, explain the reason and state the relevant business hours or latest possible start time.
+9. For a closed or out-of-hours request, offer the nearest actual available time on the same day or next open day. For an in-hours Calendar conflict, offer the nearest available time on the same day, then the next day. Prefer times closest to the customer's requested time.
+10. If none of the offered alternatives work, ask for another date or time and search again. If the customer says the original unavailable time is their only option, stop repeating alternatives and send the request to the owner for review.
+11. If no suitable time exists in the search window, collect the confirmed callback details, notify the owner, and tell the customer that the owner will call back.
+12. Book only after the customer accepts an offered time. At the final booking summary, accept a clear affirmative such as “yes,” “go ahead,” “do it,” or “book it” as the customer's approval, then perform the Calendar write once.
 
 ### Pricing enquiry
 
