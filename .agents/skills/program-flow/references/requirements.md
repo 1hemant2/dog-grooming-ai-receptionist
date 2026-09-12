@@ -36,6 +36,17 @@ Build a text-based AI receptionist for Maple Street Dog Grooming. It should hand
 
 ## Phase 1 demonstration UI
 
+### LiveKit voice demo
+
+- Run browser voice and the HTTP backend in one Node process, sharing the existing in-memory conversation store and business services. No Redis or separate worker is required.
+- Start voice through `POST /livekit/token`; the server creates trusted business/conversation context and joins the LiveKit room directly.
+- Use LiveKit room/session primitives without the agent worker runner or child job processes. Receive completed STT utterances and invoke the existing conversation handler directly, without an internal HTTP round trip.
+- Keep LiveKit API credentials on the backend; return only the room-scoped customer token to the browser.
+- Disable interruptions during agent replies for the demo. Customers answer after the reply finishes.
+- Finalize active conversations on voice disconnect or application shutdown after pending turns complete. Preserve conversation state if the required Call Log write fails.
+- STT remains Deepgram Nova 3 with Indian-English language guidance; TTS remains Inworld Ashley through LiveKit Inference.
+- When a customer explicitly asks to stop or not continue, including polite end-call requests, speak a short farewell and disconnect LiveKit after playback. Still disconnect if farewell playback or Call Log persistence fails; retain unsaved conversation state for retry. An appointment rejection or a reset request alone must not hang up.
+
 - A small browser UI demonstrates the text receptionist through the existing HTTP endpoint.
 - The UI may collect a caller phone number for the conversation and keeps it after it is provided.
 - The UI asks for and confirms a `contactPhone` before customer-specific operations such as booking, rescheduling, cancellation, or appointment lookup.

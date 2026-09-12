@@ -2,14 +2,15 @@ import { createServer, type Server } from "node:http";
 
 import type { InMemoryConversationStore } from "../models/conversation.js";
 import type { ConversationMessageHandler } from "../services/conversation-orchestrator.js";
-import { createHttpApp, type VapiHttpOptions } from "./app.js";
+import { createHttpApp, type LiveKitHttpOptions, type VapiHttpOptions } from "./app.js";
 
 export function createHttpServer(
 	conversationStore: InMemoryConversationStore,
 	resolveOrchestrator?: (businessId: string) => ConversationMessageHandler | undefined,
 	vapi?: VapiHttpOptions,
+	livekit?: LiveKitHttpOptions,
 ): Server {
-	const app = createHttpApp(conversationStore, resolveOrchestrator, vapi);
+	const app = createHttpApp(conversationStore, resolveOrchestrator, vapi, livekit);
 	return createServer(app);
 }
 
@@ -32,7 +33,10 @@ export async function closeServerGracefully(server: Server): Promise<void> {
 	});
 }
 
-export function registerShutdownSignals(server: Server, onShutdown?: () => void): void {
+export function registerShutdownSignals(
+	server: Server,
+	onShutdown?: () => void | Promise<void>,
+): void {
 	let shuttingDown = false;
 
 	const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
@@ -52,7 +56,14 @@ export function registerShutdownSignals(server: Server, onShutdown?: () => void)
 			});
 			process.exitCode = 1;
 		} finally {
-			onShutdown?.();
+			try {
+				await onShutdown?.();
+			} catch (error) {
+				console.error("Application cleanup failed.", {
+					errorName: error instanceof Error ? error.name : "UnknownError",
+				});
+				process.exitCode = 1;
+			}
 		}
 	};
 

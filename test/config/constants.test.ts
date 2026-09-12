@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { findBusinessConfig, getVapiConfig } from "../../src/config/constants.js";
+import { findBusinessConfig, getLiveKitConfig, getVapiConfig } from "../../src/config/constants.js";
 
 test("loads the requested business configuration", () => {
 	const businessConfig = findBusinessConfig("maple-street-dog-grooming");
@@ -66,5 +66,33 @@ test("rejects a Vapi mapping for an unknown business", () => {
 				VAPI_BUSINESS_ID: "unknown-business",
 			}),
 		/VAPI_BUSINESS_ID references an unknown business/,
+	);
+});
+
+test("leaves LiveKit disabled when its environment variables are absent", () => {
+	assert.equal(getLiveKitConfig({}), undefined);
+});
+
+test("normalizes LiveKit URLs without requiring a worker backend token", () => {
+	const config = getLiveKitConfig({
+		LIVEKIT_URL: "https://demo.livekit.cloud/",
+		LIVEKIT_API_KEY: "api-key",
+		LIVEKIT_API_SECRET: "api-secret",
+		LIVEKIT_AGENT_NAME: "demo-agent",
+	});
+
+	assert.deepEqual(config, {
+		websocketUrl: "wss://demo.livekit.cloud",
+		host: "https://demo.livekit.cloud",
+		apiKey: "api-key",
+		apiSecret: "api-secret",
+		agentName: "demo-agent",
+	});
+});
+
+test("rejects partial LiveKit configuration", () => {
+	assert.throws(
+		() => getLiveKitConfig({ LIVEKIT_URL: "wss://demo.livekit.cloud" }),
+		/LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET must be configured together/,
 	);
 });

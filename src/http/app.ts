@@ -1,9 +1,11 @@
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 
-import { APPLICATION_CONFIG, type VapiConfig } from "../config/constants.js";
+import { APPLICATION_CONFIG, type LiveKitConfig, type VapiConfig } from "../config/constants.js";
 import type { InMemoryConversationStore } from "../models/conversation.js";
+import type { LiveKitVoiceHost } from "../models/livekit.js";
 import type { VapiCallHandler } from "../models/vapi.js";
 import { createConversationRouter } from "../routes/conversation-routes.js";
+import { createLiveKitRouter } from "../routes/livekit-routes.js";
 import { createVapiRouter } from "../routes/vapi-routes.js";
 import type { ConversationMessageHandler } from "../services/conversation-orchestrator.js";
 
@@ -12,10 +14,16 @@ export interface VapiHttpOptions {
 	turnHandler?: VapiCallHandler;
 }
 
+export interface LiveKitHttpOptions {
+	config: LiveKitConfig;
+	voiceHost?: LiveKitVoiceHost;
+}
+
 export function createHttpApp(
 	conversationStore: InMemoryConversationStore,
 	resolveOrchestrator?: (businessId: string) => ConversationMessageHandler | undefined,
 	vapi?: VapiHttpOptions,
+	livekit?: LiveKitHttpOptions,
 ): Express {
 	const app = express();
 
@@ -23,6 +31,8 @@ export function createHttpApp(
 	app.get("/health", handleHealthCheck);
 	app.use("/conversations", createConversationRouter(conversationStore, resolveOrchestrator));
 	app.use("/vapi", createVapiRouter(vapi?.config, vapi?.turnHandler));
+	app.use("/livekit", createLiveKitRouter(livekit?.config, livekit?.voiceHost));
+	app.use("/vendor/livekit", express.static("node_modules/livekit-client/dist"));
 	app.use(express.static("public"));
 	app.use(handleNotFound);
 	app.use(handleExpressError);

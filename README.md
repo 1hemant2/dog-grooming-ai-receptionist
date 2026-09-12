@@ -1,16 +1,18 @@
 # Maple Street AI Receptionist
 
-A TypeScript receptionist for Maple Street Dog Grooming. The same application supports browser chat and the Vapi voice assistant. It answers business questions, manages appointments through Google Calendar, stores contacts and conversation outcomes in Google Sheets, and notifies the owner through Telegram when human judgment is required.
+A TypeScript receptionist for Maple Street Dog Grooming. The same application supports browser chat, LiveKit browser voice, and the Vapi voice assistant. It answers business questions, manages appointments through Google Calendar, stores contacts and conversation outcomes in Google Sheets, and notifies the owner through Telegram when human judgment is required.
 
 ## System overview
 
-| Channel         | Entry point                         | Conversation identity                         |
-| --------------- | ----------------------------------- | --------------------------------------------- |
-| Browser chat    | `POST /conversations/messages`      | Server-generated or supplied `conversationId` |
-| Vapi voice      | `POST /vapi/conversations/messages` | Trusted Vapi call ID                          |
-| Call completion | `POST /vapi/events`                 | Vapi `end-of-call-report`                     |
+| Channel            | Entry point                                                           | Conversation identity                            |
+| ------------------ | --------------------------------------------------------------------- | ------------------------------------------------ |
+| Browser chat       | `POST /conversations/messages`                                        | Server-generated or supplied `conversationId`    |
+| LiveKit voice      | `POST /livekit/token`, then a direct call to the conversation handler | Server-created room and conversation ID          |
+| Vapi voice         | `POST /vapi/conversations/messages`                                   | Trusted Vapi call ID                             |
+| Call completion    | `POST /vapi/events`                                                   | Vapi `end-of-call-report`                        |
+| LiveKit completion | Direct call to the conversation handler                               | Voice session disconnect or application shutdown |
 
-Both channels use the same conversation orchestrator and business services. Vapi handles telephony, transcription, and speech; it does not duplicate the receptionist's business logic.
+All channels use the same conversation orchestrator and business services. Vapi and LiveKit handle transport, transcription, and speech; they do not duplicate the receptionist's business logic.
 
 ## Supported behavior
 
@@ -28,7 +30,7 @@ The receptionist asks for one missing detail at a time. Customer-specific operat
 
 ```mermaid
 flowchart TD
-	A[Browser chat or Vapi] --> B[Express controller]
+	A[Browser chat, LiveKit, or Vapi] --> B[Express controller]
 	B --> C[Conversation store]
 	C --> D[Conversation orchestrator]
 	D --> E[Local parser or Gemini interpreter]
@@ -44,13 +46,13 @@ flowchart TD
 4. The orchestrator preserves collected facts and selects the next business operation or single follow-up question.
 5. Deterministic services enforce pricing, safety, availability, confirmation, and handoff rules.
 6. Calendar changes are checked immediately before writing. Contacts and final conversation outcomes are written to Sheets.
-7. Ending a chat or Vapi call writes one Call Log row, then removes conversation state. A failed final write preserves state for retry.
+7. Ending a chat, LiveKit room, or Vapi call writes one Call Log row, then removes conversation state. A failed final write preserves state for retry.
 
 ## Key design decisions
 
 | Decision                                                       | Reason                                                                                     |
 | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| One application core with HTTP and Vapi adapters               | Keeps text and voice behavior consistent and independently testable                        |
+| One application core with HTTP, LiveKit, and Vapi adapters     | Keeps text and voice behavior consistent and independently testable                        |
 | LLM for interpretation and final summaries only                | Business rules, confirmations, and external writes remain predictable                      |
 | Business configuration collection                              | A new vendor can be added without rewriting controllers or workflows                       |
 | Small interfaces around Calendar, Sheets, Gemini, and Telegram | Core tests use fakes and do not call live providers                                        |
@@ -78,6 +80,7 @@ The required configuration is grouped by provider:
 - Google: `GOOGLE_CLIENT_EMAIL`, `GOOGLE_PRIVATE_KEY`, `GOOGLE_SPREADSHEET_ID`, and `GOOGLE_CALENDAR_ID`.
 - Telegram: `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`.
 - Vapi: `VAPI_SERVER_TOKEN`, `VAPI_PHONE_NUMBER`, and `VAPI_BUSINESS_ID`.
+- LiveKit browser voice: `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET`; optionally set `LIVEKIT_AGENT_NAME`. Voice and HTTP run in one Node process with one conversation store.
 
 Enable the Google Sheets and Calendar APIs. Share the Sheet and Calendar with `GOOGLE_CLIENT_EMAIL`; Calendar access must allow event changes. Keep all credentials outside Git.
 
@@ -91,11 +94,13 @@ npm run build
 Example end-to-end workflows:
 
 1. In the browser chat, book or reschedule an appointment and show that the UI, Calendar event, Contacts row, and final Call Log row agree.
-2. In Vapi, complete a real multi-turn call, show a natural delayed acknowledgment when applicable, and verify the resulting Calendar/Sheets change or Telegram handoff.
+2. In the browser, click **Start voice** and complete a LiveKit multi-turn conversation. Verify that the spoken turns create the same Calendar/Sheets change or Telegram handoff as text.
+3. In Vapi, complete a real multi-turn call, show a natural delayed acknowledgment when applicable, and verify the resulting Calendar/Sheets change or Telegram handoff.
 
 Additional guides:
 
 - [Browser workflow guide](docs/demo.md)
+- [LiveKit browser voice setup](docs/livekit-setup.md)
 - [Vapi voice setup](docs/vapi-setup.md)
 - [Confirmed business flows](.agents/skills/program-flow/references/requirements.md)
 
@@ -103,4 +108,5 @@ Additional guides:
 
 - Conversation state and duplicate-operation guards are in memory and do not survive a restart.
 - The local Vapi setup uses an HTTPS tunnel; the application and tunnel must remain running.
+- LiveKit's agent worker must remain running alongside the HTTP server. The browser UI uses LiveKit's WebRTC microphone and speaker path, so the browser must be allowed to access the selected microphone.
 - Holiday hours, payments, automatic refunds, and multi-location administration are outside the current scope.

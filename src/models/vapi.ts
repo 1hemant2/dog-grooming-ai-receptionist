@@ -1,29 +1,12 @@
-import type { ConversationOutcomeStatus } from "./receptionist.js";
+import type {
+	VoiceCallContext,
+	VoiceCallHandler,
+	VoiceConversationTurn,
+	VoiceTurnResult,
+} from "./voice-call.js";
 
-export interface VapiCallContext {
-	businessId: string;
-	conversationId: string;
-	callerPhone?: string;
-}
-
-export interface VapiConversationTurn {
-	context: VapiCallContext;
-	message: string;
-	requestId?: string;
-}
-
-export interface VapiTurnResult {
-	conversationId: string;
-	status: ConversationOutcomeStatus;
-	reply: string;
-	endCall?: boolean;
-	appointmentId?: string;
-}
-
-export interface VapiTurnHandler {
-	handleTurn(turn: VapiConversationTurn): Promise<VapiTurnResult>;
-}
-
-export interface VapiCallHandler extends VapiTurnHandler {
-	endCall(context: VapiCallContext): Promise<void>;
-}
+export type VapiCallContext = VoiceCallContext;
+export type VapiConversationTurn = VoiceConversationTurn;
+export type VapiTurnResult = VoiceTurnResult;
+export type VapiTurnHandler = Pick<VoiceCallHandler, "handleTurn">;
+export type VapiCallHandler = VoiceCallHandler;

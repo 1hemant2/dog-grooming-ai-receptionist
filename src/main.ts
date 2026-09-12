@@ -1,4 +1,5 @@
 import { createConversationOrchestratorResolver } from "./app/create-conversation-orchestrator-resolver.js";
+import { createLiveKitHttpOptions } from "./app/create-livekit-http-options.js";
 import { createVapiHttpOptions } from "./app/create-vapi-http-options.js";
 import { APPLICATION_CONFIG } from "./config/constants.js";
 import { createHttpServer, registerShutdownSignals } from "./http/server.js";
@@ -8,7 +9,13 @@ import { ConversationFinalizer } from "./services/conversation-finalizer.js";
 const conversationStore = new InMemoryConversationStore();
 const resolveOrchestrator = createConversationOrchestratorResolver();
 const vapiOptions = createVapiHttpOptions(conversationStore, resolveOrchestrator);
-const server = createHttpServer(conversationStore, resolveOrchestrator, vapiOptions);
+const liveKitOptions = createLiveKitHttpOptions(conversationStore, resolveOrchestrator);
+const server = createHttpServer(
+	conversationStore,
+	resolveOrchestrator,
+	vapiOptions,
+	liveKitOptions,
+);
 const conversationFinalizer = new ConversationFinalizer(
 	conversationStore,
 	resolveOrchestrator,
@@ -19,7 +26,10 @@ const conversationCleanupTimer = setInterval(() => {
 }, APPLICATION_CONFIG.conversationCleanupIntervalMs);
 conversationCleanupTimer.unref();
 
-registerShutdownSignals(server, () => clearInterval(conversationCleanupTimer));
+registerShutdownSignals(server, async () => {
+	clearInterval(conversationCleanupTimer);
+	await liveKitOptions?.voiceHost?.close();
+});
 
 server.listen(APPLICATION_CONFIG.port, () => {
 	console.log(`Receptionist listening on http://localhost:${APPLICATION_CONFIG.port}`);

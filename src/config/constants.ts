@@ -6,6 +6,7 @@ const DEFAULT_BUSINESS_ID = "maple-street-dog-grooming";
 const DEFAULT_SPREADSHEET_ID = DEFAULT_BUSINESS_ID;
 const DEFAULT_CALENDAR_ID = DEFAULT_BUSINESS_ID;
 const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash";
+const DEFAULT_LIVEKIT_AGENT_NAME = "maple-street-receptionist";
 
 export const EXT = {
 	googleapis: {
@@ -78,7 +79,7 @@ export const APPLICATION_PATTERNS = {
 		/^(?:(?:please|can we|i want to|i would like to|let s|lets)\s+)?(?:reset(?:\s+in between|\s+(?:the|this|that|current|my)\s+(?:request|booking|conversation|flow))?|start over|start again|begin again|(?:new|start a new) (?:request|conversation)|forget this|forget that|cancel (?:this|that) and start(?: over| again))$/i,
 	// Matches an explicit request to end the current call or conversation.
 	conversationEnd:
-		/^(?:(?:okay|ok|alright|well|thanks|thank you)\s+)?(?:goodbye|bye|i am done|im done|i m done|thats all|that s all|that is all|i do not want to continue|i don t want to continue|end the call|end this call|hang up|disconnect|stop the call|stop this conversation|we can end(?: now| here)?)$/i,
+		/^(?:(?:okay|ok|alright|well|thanks|thank you|please|can you|could you)\s+)*(?:goodbye|bye|i am done|im done|i m done|thats all|that s all|that is all|(?:i do not|i don t|i dont) want to continue(?:\s+(?:the|this)\s+(?:call|conversation))?|end (?:the|this) (?:call|conversation)|hang up|disconnect(?: the call)?|stop (?:the|this) (?:call|conversation)|we can end(?: now| here)?)(?:\s+(?:please|now|thanks|thank you))*$/i,
 };
 
 export interface VapiBusinessPhoneMapping {
@@ -89,6 +90,14 @@ export interface VapiBusinessPhoneMapping {
 export interface VapiConfig {
 	serverToken: string;
 	businessPhoneMappings: VapiBusinessPhoneMapping[];
+}
+
+export interface LiveKitConfig {
+	websocketUrl: string;
+	host: string;
+	apiKey: string;
+	apiSecret: string;
+	agentName: string;
 }
 
 // Store business configurations in an array so new vendors can be added without changing request handling.
@@ -208,6 +217,34 @@ export function getVapiConfig(
 	};
 }
 
+export function getLiveKitConfig(
+	environment: Record<string, string | undefined> = process.env,
+): LiveKitConfig | undefined {
+	const rawUrl = environment.LIVEKIT_URL?.trim();
+	const apiKey = environment.LIVEKIT_API_KEY?.trim();
+	const apiSecret = environment.LIVEKIT_API_SECRET?.trim();
+
+	if (!rawUrl && !apiKey && !apiSecret) {
+		return undefined;
+	}
+
+	if (!rawUrl || !apiKey || !apiSecret) {
+		throw new Error(
+			"LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET must be configured together",
+		);
+	}
+
+	const liveKitUrls = parseLiveKitUrls(rawUrl);
+
+	return {
+		websocketUrl: liveKitUrls.websocketUrl,
+		host: liveKitUrls.host,
+		apiKey,
+		apiSecret,
+		agentName: environment.LIVEKIT_AGENT_NAME?.trim() || DEFAULT_LIVEKIT_AGENT_NAME,
+	};
+}
+
 function getPort(): number {
 	const port = Number(process.env.PORT ?? DEFAULT_PORT);
 
@@ -216,6 +253,33 @@ function getPort(): number {
 	}
 
 	return port;
+}
+
+function parseLiveKitUrls(rawUrl: string): { websocketUrl: string; host: string } {
+	let parsedUrl: URL;
+
+	try {
+		parsedUrl = new URL(rawUrl);
+	} catch {
+		throw new Error("LIVEKIT_URL must be a valid LiveKit URL");
+	}
+
+	if (!["http:", "https:", "ws:", "wss:"].includes(parsedUrl.protocol)) {
+		throw new Error("LIVEKIT_URL must use http, https, ws, or wss");
+	}
+
+	const websocketUrl = new URL(parsedUrl);
+	websocketUrl.protocol =
+		parsedUrl.protocol === "http:" || parsedUrl.protocol === "ws:" ? "ws:" : "wss:";
+
+	const host = new URL(parsedUrl);
+	host.protocol =
+		parsedUrl.protocol === "http:" || parsedUrl.protocol === "ws:" ? "http:" : "https:";
+
+	return {
+		websocketUrl: websocketUrl.toString().replace(/\/$/, ""),
+		host: host.toString().replace(/\/$/, ""),
+	};
 }
 
 export function getGoogleServiceAccountCredentials(): {
